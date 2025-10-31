@@ -783,6 +783,8 @@ function pasteSelectedValues_Bidirectional() {
   try {
     const currentFile = SpreadsheetApp.getActive();
     const currentFileName = currentFile.getName();
+    const currentSheet = currentFile.getActiveSheet(); // Получаем активную вкладку
+    const currentSheetName = currentSheet.getName(); // Получаем имя активной вкладки
 
     // Извлекаем ID заказа из названия файла
     const orderId = extractOrderIdFromFileName_(currentFileName);
@@ -805,16 +807,26 @@ function pasteSelectedValues_Bidirectional() {
     if (!files.hasNext()) throw new Error(`Файл "${destinationName}" не найден`);
     
     const destinationId = files.next().getId();
+    const dstSS = SpreadsheetApp.openById(destinationId);
 
-    // Копируем выделенный диапазон
-    const srcSheet = currentFile.getSheets()[0];
-    const activeRange = srcSheet.getActiveRange();
+    // Получаем или создаем вкладку с таким же именем в целевом файле
+    let dstSheet;
+    try {
+      dstSheet = dstSS.getSheetByName(currentSheetName);
+      if (!dstSheet) {
+        // Если вкладки нет - создаем её
+        dstSheet = dstSS.insertSheet(currentSheetName);
+        console.log(`Создана новая вкладка: ${currentSheetName}`);
+      }
+    } catch (e) {
+      throw new Error(`Ошибка при работе с вкладкой "${currentSheetName}": ${e.message}`);
+    }
+
+    // Копируем выделенный диапазон с активной вкладки
+    const activeRange = currentSheet.getActiveRange();
     if (!activeRange) throw new Error('Не выделен диапазон для копирования');
 
-    const dstSS = SpreadsheetApp.openById(destinationId);
-    const dstSheet = dstSS.getSheets()[0];
-    
-    // Создаем целевой диапазон
+    // Создаем целевой диапазон на соответствующей вкладке
     const destinationRange = dstSheet.getRange(
       activeRange.getRow(),
       activeRange.getColumn(),
@@ -866,12 +878,16 @@ function pasteSelectedValues_Bidirectional() {
     }
     
     // Вставляем данные в целевой диапазон
-    if (isToStudent) {
-      // В STUDENT - только значения
-      destinationRange.setValues(dataToPaste);
-    } else {
-      // В DEV - используем интеллектуальную вставку
-      intelligentPaste_(destinationRange, dataToPaste, formulas);
+    try {
+      if (isToStudent) {
+        // В STUDENT - только значения
+        destinationRange.setValues(dataToPaste);
+      } else {
+        // В DEV - используем интеллектуальную вставку
+        intelligentPaste_(destinationRange, dataToPaste, formulas);
+      }
+    } catch (e) {
+      throw new Error(`Ошибка при вставке данных: ${e.message}`);
     }
 
     // Простое сообщение об успехе
@@ -880,6 +896,7 @@ function pasteSelectedValues_Bidirectional() {
     
     showLink_(
       `✅ Скопировано ${activeRange.getNumRows()}×${activeRange.getNumColumns()} ячеек\n` +
+      `Вкладка: ${currentSheetName}\n` +
       `Направление: ${direction}\n` +
       `Тип: ${copyType}`,
       dstSS.getUrl(),
