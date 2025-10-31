@@ -118,15 +118,20 @@ async function menuExpandSurgically_Final() {
         shStud.insertRowsAfter(r0, k - 1);
         copyRowFormat_(shStud, r0, r0 + 1, k - 1);
       }
-      
+
       const blockData = [];
       for(let i=0; i<k; i++) {
+        // Для обычных строк (без группировки) используем ту же логику распределения данных
         const bVal = B[i] !== undefined ? B[i] : (B.length === 1 ? B[0] : '');
         const cVal = C[i] !== undefined ? C[i] : (C.length === 1 ? C[0] : '');
         const dVal = D[i] !== undefined ? D[i] : (D.length === 1 ? D[0] : '');
         blockData.push([bVal, cVal, dVal]);
       }
-      shStud.getRange(r0, COL_B, k, 3).setValues(blockData);
+
+      // Вставляем данные только если строка НЕ сгруппирована в STUDENT
+      if (!isRowGrouped_(shStud, r0)) {
+        shStud.getRange(r0, COL_B, k, 3).setValues(blockData);
+      }
 
       // Принудительно применяем изменения
       SpreadsheetApp.flush();
@@ -135,18 +140,26 @@ async function menuExpandSurgically_Final() {
       if (k > 1) {
         shDev.insertRowsAfter(r0, k - 1);
       }
-      
+
       const valuesBlockBCD = shStud.getRange(r0, COL_B, k, 3).getValues();
-      shDev.getRange(r0, COL_B, k, 3).setValues(valuesBlockBCD);
-      
+
+      // Вставляем данные в DEV только если строка НЕ сгруппирована в DEV
+      if (!isRowGrouped_(shDev, r0)) {
+        shDev.getRange(r0, COL_B, k, 3).setValues(valuesBlockBCD);
+      }
+
       const templateFormulasEFGH = shDev.getRange(r0, COL_E, 1, 4).getFormulas()[0];
       const newBlockFormulasEFGH = [];
       for (let i = 0; i < k; i++) {
         const newRow = templateFormulasEFGH.map(formulaText => adjustCellReferences_(formulaText, i));
         newBlockFormulasEFGH.push(newRow);
       }
-      shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
-      
+
+      // Вставляем формулы в DEV только если строка НЕ сгруппирована в DEV
+      if (!isRowGrouped_(shDev, r0)) {
+        shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
+      }
+
       return { row: r0, count: k };
     });
 
@@ -989,6 +1002,26 @@ function resolveRegistryRowContext_() {
   return {reg, sheet, row};
 }
 
+function isRowGrouped_(sheet, rowIndex) {
+  try {
+    const rowGroups = sheet.getRowGroups();
+    
+    for (const group of rowGroups) {
+      const startRow = group.getControlIndex() + 1; 
+      const numRows = group.getNumRows();
+      const endRow = startRow + numRows - 1;
+      
+      if (rowIndex > startRow && rowIndex <= endRow) {
+        return true;
+      }
+    }
+    return false;
+  } catch (e) {
+    console.log('Ошибка при проверке группировки:', e);
+    return false;
+  }
+}
+
 function resolveDevStudentByContext_() {
   const { sheet, row } = resolveRegistryRowContext_();
   let devUrl = String(sheet.getRange(row, COLS.devUrl).getValue() || '').trim();
@@ -1131,9 +1164,15 @@ function collectSelectedRows_WithParsedLists_(shStud){
   const D = shStud.getRange(1, COL_D, last, 1).getDisplayValues().map(r=>String(r[0]||''));
 
   for (let r = 1; r <= last; r++){
+    // Пропускаем сгруппированные строки
+    if (isRowGrouped_(shStud, r)) {
+      continue;
+    }
+
     const aClean = (A[r-1] || '').replace(/[\u200B\u200C\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ').trim();
 
-    if (!aClean.includes(MARK_SELECT)) continue;
+    // УБИРАЕМ проверку на MARK_SELECT - обрабатываем ВСЕ строки
+    // if (!aClean.includes(MARK_SELECT)) continue; ← УДАЛИТЬ ЭТУ СТРОКУ
 
     const listB = parseNumberedList_(B[r-1]);
     const listC = parseNumberedList_(C[r-1]);
