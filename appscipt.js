@@ -106,7 +106,7 @@ async function menuExpandSurgically_Final() {
       const { k, B, C, D } = g.meta;
       if (!k || k < 1) return;
 
-      // --- Шаг 1: Работа в STUDENT (ТОЛЬКО данные B-D) ---
+      // --- Шаг 1: Работа в STUDENT ---
       if (k > 1) {
         shStud.insertRowsAfter(r0, k - 1);
         copyRowFormat_(shStud, r0, r0 + 1, k - 1);
@@ -139,32 +139,49 @@ async function menuExpandSurgically_Final() {
       }
       SpreadsheetApp.flush();
 
-      // --- Шаг 2: Работа в DEV (КОПИРУЕМ ТОЛЬКО B-D из STUDENT) ---
+      // --- Шаг 2: Работа в DEV ---
       if (k > 1) {
         shDev.insertRowsAfter(r0, k - 1);
-      }
-
-      // Копируем ТОЛЬКО B-D из STUDENT в DEV (не трогаем E-R в DEV)
-      const valuesBD = shStud.getRange(r0, COL_B, k, 3).getValues();
-      
-      if (!isRowGrouped_(shDev, r0)) {
-        shDev.getRange(r0, COL_B, k, 3).setValues(valuesBD);
-      }
-
-      // Для строк с ">" устанавливаем формулы в столбцах E-H DEV
-      if (g.hasSelectMarker) {
-        const templateFormulasEFGH = shDev.getRange(r0, COL_E, 1, 4).getFormulas()[0];
-        const newBlockFormulasEFGH = [];
-        for (let i = 0; i < k; i++) {
-          const newRow = templateFormulasEFGH.map(formulaText => 
-            adjustCellReferences_(formulaText, i)
+        
+        // СНАЧАЛА копируем формулы из исходной строки DEV во вставленные строки
+        const sourceDevFormulas = shDev.getRange(r0, 1, 1, shDev.getLastColumn()).getFormulas()[0];
+        for (let i = 1; i < k; i++) {
+          const targetRange = shDev.getRange(r0 + i, 1, 1, sourceDevFormulas.length);
+          const formulasToSet = sourceDevFormulas.map(formula => 
+            formula ? adjustCellReferences_(formula, i) : ''
           );
-          newBlockFormulasEFGH.push(newRow);
+          targetRange.setFormulas([formulasToSet]);
         }
+      }
 
-        if (!isRowGrouped_(shDev, r0)) {
-          shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
-        }
+      // Теперь копируем только ЗНАЧЕНИЯ из STUDENT в DEV
+      // Получаем значения из STUDENT
+      const studValues = shStud.getRange(r0, COL_B, k, 18).getValues();
+      
+      // Получаем формулы из DEV чтобы понять где можно перезаписывать значения
+      const devFormulas = shDev.getRange(r0, COL_B, k, 18).getFormulas();
+      
+      // Создаем массив для вставки - только значения там где нет формул
+      const valuesToSet = studValues.map((row, rowIndex) => 
+        row.map((value, colIndex) => 
+          // Если в DEV есть формула - оставляем null (не изменяем), иначе берем значение из STUDENT
+          devFormulas[rowIndex][colIndex] && devFormulas[rowIndex][colIndex].startsWith('=') ? null : value
+        )
+      );
+
+      if (!isRowGrouped_(shDev, r0)) {
+        // Используем setValues с null чтобы не изменять ячейки с формулами
+        const range = shDev.getRange(r0, COL_B, k, 18);
+        const currentValues = range.getValues();
+        
+        // Объединяем значения: где null - оставляем текущее значение, иначе берем новое
+        const finalValues = currentValues.map((currentRow, rowIndex) => 
+          currentRow.map((currentValue, colIndex) => 
+            valuesToSet[rowIndex][colIndex] === null ? currentValue : valuesToSet[rowIndex][colIndex]
+          )
+        );
+        
+        range.setValues(finalValues);
       }
 
       return { row: r0, count: k, hasSelectMarker: g.hasSelectMarker };
