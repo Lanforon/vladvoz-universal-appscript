@@ -80,93 +80,88 @@ function onOpen() {
 
 async function menuExpandSurgically_Final() {
   try {
-    // Получаем ID DEV и STUDENT файлов из контекста
     const { devId, studentId } = resolveDevStudentByContext_();
     
-    // Открываем STUDENT таблицу
     const ssStud = SpreadsheetApp.openById(studentId);
     const shStud = ssStud.getActiveSheet();
     const sheetName = shStud.getName();
     
-    // Открываем DEV таблицу
     const ssDev = SpreadsheetApp.openById(devId);
     const shDev = ssDev.getSheetByName(sheetName) || ssDev.insertSheet(sheetName);
 
-    // Собираем группы строк для обработки (только с ">" и несгруппированные)
     const groups = collectSelectedRows_WithParsedLists_(shStud);
     if (!groups.length) {
       SpreadsheetApp.getUi().alert('Не найдено строк с маркером "> ОТБЕРИТЕ" на активном листе.');
       return;
     }
 
-    // --- АСИНХРОННО разворачиваем формулы в DEV ПЕРЕД вставкой строк ---
+    // Разворачиваем формулы в DEV
     await unfoldFormulasInColumnsAsync_(devId, [COL_E, COL_F, COL_G, COL_H]);
-    SpreadsheetApp.flush(); 
+    SpreadsheetApp.flush();
 
-    // Сортируем группы по убыванию индекса строк
     groups.sort((a, b) => b.rowIndex - a.rowIndex);
 
-    // Создаем массив промисов для асинхронного выполнения
     const promises = groups.map(async (g) => {
       const r0 = g.rowIndex;
       const { k, B, C, D } = g.meta;
       if (!k || k < 1) return;
 
-      // --- Шаг 1: Работа в STUDENT ---
+      // --- Шаг 1: Работа в STUDENT (ТОЛЬКО данные B-D) ---
       if (k > 1) {
         shStud.insertRowsAfter(r0, k - 1);
         copyRowFormat_(shStud, r0, r0 + 1, k - 1);
+        
+        // Копируем формулы из исходной строки во вставленные строки
+        const sourceFormulas = shStud.getRange(r0, 1, 1, shStud.getLastColumn()).getFormulas()[0];
+        for (let i = 1; i < k; i++) {
+          const targetRange = shStud.getRange(r0 + i, 1, 1, sourceFormulas.length);
+          const formulasToSet = sourceFormulas.map(formula => 
+            formula ? adjustCellReferences_(formula, i) : ''
+          );
+          targetRange.setFormulas([formulasToSet]);
+        }
       }
 
-      // Для строк с ">" - разворачиваем списки, для остальных - копируем как есть
-      const blockData = [];
+      // Обрабатываем ТОЛЬКО строки с маркером ">" - заполняем B-D данными
       if (g.hasSelectMarker) {
-        // Разворачиваем списки для строк с ">"
-        for(let i=0; i<k; i++) {
+        const blockData = [];
+        for(let i = 0; i < k; i++) {
           const bVal = B[i] !== undefined ? B[i] : (B.length === 1 ? B[0] : '');
           const cVal = C[i] !== undefined ? C[i] : (C.length === 1 ? C[0] : '');
           const dVal = D[i] !== undefined ? D[i] : (D.length === 1 ? D[0] : '');
           blockData.push([bVal, cVal, dVal]);
         }
-      } else {
-        // Для обычных строк - копируем оригинальные значения
-        const originalValues = shStud.getRange(r0, COL_B, 1, 3).getValues()[0];
-        for(let i=0; i<k; i++) {
-          blockData.push([...originalValues]);
+        
+        // Вставляем ТОЛЬКО данные в B-D
+        if (!isRowGrouped_(shStud, r0)) {
+          shStud.getRange(r0, COL_B, k, 3).setValues(blockData);
         }
       }
-
-      // Вставляем данные только если строка НЕ сгруппирована в STUDENT
-      if (!isRowGrouped_(shStud, r0)) {
-        shStud.getRange(r0, COL_B, k, 3).setValues(blockData);
-      }
-
-      // Принудительно применяем изменения
       SpreadsheetApp.flush();
 
-      // --- Шаг 2: Работа в DEV ---
+      // --- Шаг 2: Работа в DEV (КОПИРУЕМ ТОЛЬКО B-D из STUDENT) ---
       if (k > 1) {
         shDev.insertRowsAfter(r0, k - 1);
       }
 
-      // Копируем расширенный диапазон B-R из STUDENT в DEV
-      const valuesExtended = shStud.getRange(r0, COL_B, k, 18).getValues(); // B-R = 18 столбцов
-
-      // Вставляем данные в DEV только если строка НЕ сгруппирована в DEV
+      // Копируем ТОЛЬКО B-D из STUDENT в DEV (не трогаем E-R в DEV)
+      const valuesBD = shStud.getRange(r0, COL_B, k, 3).getValues();
+      
       if (!isRowGrouped_(shDev, r0)) {
-        shDev.getRange(r0, COL_B, k, 18).setValues(valuesExtended);
+        shDev.getRange(r0, COL_B, k, 3).setValues(valuesBD);
       }
 
-      // Для строк с ">" также устанавливаем формулы в столбцах E-H
+      // Для строк с ">" устанавливаем формулы в столбцах E-H DEV
       if (g.hasSelectMarker) {
         const templateFormulasEFGH = shDev.getRange(r0, COL_E, 1, 4).getFormulas()[0];
         const newBlockFormulasEFGH = [];
         for (let i = 0; i < k; i++) {
-          const newRow = templateFormulasEFGH.map(formulaText => adjustCellReferences_(formulaText, i));
+          const newRow = templateFormulasEFGH.map(formulaText => 
+            adjustCellReferences_(formulaText, i)
+          );
           newBlockFormulasEFGH.push(newRow);
         }
 
-        // Вставляем формулы в DEV только если строка НЕ сгруппирована в DEV
         if (!isRowGrouped_(shDev, r0)) {
           shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
         }
@@ -175,13 +170,12 @@ async function menuExpandSurgically_Final() {
       return { row: r0, count: k, hasSelectMarker: g.hasSelectMarker };
     });
 
-    // Ждем завершения всех операций
     const results = await Promise.all(promises);
     
     const expandedCount = results.filter(r => r.hasSelectMarker).length;
     const copiedCount = results.length - expandedCount;
     
-    SpreadsheetApp.getUi().alert(`✅ Готово! Обработано ${results.length} строк:\n- Развернуто списков: ${expandedCount}\n- Скопировано как есть: ${copiedCount}\nСмыслы раскрыты и синхронизированы в DEV.`);
+    SpreadsheetApp.getUi().alert(`✅ Готово! Обработано ${results.length} строк:\n- Развернуто списков: ${expandedCount}\n- Скопировано как есть: ${copiedCount}\nФормулы в DEV сохранены!`);
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка [3. Раскрыть смыслы]: ' + (e.stack || e.message || e));
@@ -190,7 +184,7 @@ async function menuExpandSurgically_Final() {
 
 /***** === АСИНХРОННАЯ функция для параллельного раскрытия формул в столбцах ===*****/
 async function unfoldFormulasInColumnsAsync_(fileId, colIndexes) {
-  // Открываем таблицу по ID
+  // Открываем таблицу по IDв
   const ss = SpreadsheetApp.openById(fileId);
   // Получаем все листы таблицы
   const sheets = ss.getSheets();
