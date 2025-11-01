@@ -154,34 +154,39 @@ async function menuExpandSurgically_Final() {
         }
       }
 
-      // Теперь копируем только ЗНАЧЕНИЯ из STUDENT в DEV
-      // Получаем значения из STUDENT
+      // Теперь копируем данные из STUDENT в DEV, но НЕ трогаем ячейки с формулами
       const studValues = shStud.getRange(r0, COL_B, k, 18).getValues();
-      
-      // Получаем формулы из DEV чтобы понять где можно перезаписывать значения
       const devFormulas = shDev.getRange(r0, COL_B, k, 18).getFormulas();
       
-      // Создаем массив для вставки - только значения там где нет формул
-      const valuesToSet = studValues.map((row, rowIndex) => 
-        row.map((value, colIndex) => 
-          // Если в DEV есть формула - оставляем null (не изменяем), иначе берем значение из STUDENT
-          devFormulas[rowIndex][colIndex] && devFormulas[rowIndex][colIndex].startsWith('=') ? null : value
-        )
-      );
-
       if (!isRowGrouped_(shDev, r0)) {
-        // Используем setValues с null чтобы не изменять ячейки с формулами
-        const range = shDev.getRange(r0, COL_B, k, 18);
-        const currentValues = range.getValues();
-        
-        // Объединяем значения: где null - оставляем текущее значение, иначе берем новое
-        const finalValues = currentValues.map((currentRow, rowIndex) => 
-          currentRow.map((currentValue, colIndex) => 
-            valuesToSet[rowIndex][colIndex] === null ? currentValue : valuesToSet[rowIndex][colIndex]
-          )
-        );
-        
-        range.setValues(finalValues);
+        // Проходим по каждой ячейке и копируем только если в DEV нет формулы
+        for (let row = 0; row < k; row++) {
+          for (let col = 0; col < 18; col++) {
+            const devFormula = devFormulas[row][col];
+            // Если в DEV нет формулы - копируем значение из STUDENT
+            if (!devFormula || !devFormula.startsWith('=')) {
+              const cell = shDev.getRange(r0 + row, COL_B + col, 1, 1);
+              cell.setValue(studValues[row][col]);
+            }
+            // Если есть формула - ничего не делаем (сохраняем формулу)
+          }
+        }
+      }
+
+      // Для строк с ">" устанавливаем формулы в столбцах E-H DEV
+      if (g.hasSelectMarker) {
+        const templateFormulasEFGH = shDev.getRange(r0, COL_E, 1, 4).getFormulas()[0];
+        const newBlockFormulasEFGH = [];
+        for (let i = 0; i < k; i++) {
+          const newRow = templateFormulasEFGH.map(formulaText => 
+            adjustCellReferences_(formulaText, i)
+          );
+          newBlockFormulasEFGH.push(newRow);
+        }
+
+        if (!isRowGrouped_(shDev, r0)) {
+          shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
+        }
       }
 
       return { row: r0, count: k, hasSelectMarker: g.hasSelectMarker };
