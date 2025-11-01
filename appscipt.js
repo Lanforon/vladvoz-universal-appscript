@@ -92,7 +92,7 @@ async function menuExpandSurgically_Final() {
     const ssDev = SpreadsheetApp.openById(devId);
     const shDev = ssDev.getSheetByName(sheetName) || ssDev.insertSheet(sheetName);
 
-    // Собираем группы строк для обработки
+    // Собираем группы строк для обработки (только с ">" и несгруппированные)
     const groups = collectSelectedRows_WithParsedLists_(shStud);
     if (!groups.length) {
       SpreadsheetApp.getUi().alert('Не найдено строк с маркером "> ОТБЕРИТЕ" на активном листе.');
@@ -100,7 +100,6 @@ async function menuExpandSurgically_Final() {
     }
 
     // --- АСИНХРОННО разворачиваем формулы в DEV ПЕРЕД вставкой строк ---
-    // Вместо последовательной обработки столбцов - параллельная
     await unfoldFormulasInColumnsAsync_(devId, [COL_E, COL_F, COL_G, COL_H]);
     SpreadsheetApp.flush(); 
 
@@ -119,13 +118,22 @@ async function menuExpandSurgically_Final() {
         copyRowFormat_(shStud, r0, r0 + 1, k - 1);
       }
 
+      // Для строк с ">" - разворачиваем списки, для остальных - копируем как есть
       const blockData = [];
-      for(let i=0; i<k; i++) {
-        // Для обычных строк (без группировки) используем ту же логику распределения данных
-        const bVal = B[i] !== undefined ? B[i] : (B.length === 1 ? B[0] : '');
-        const cVal = C[i] !== undefined ? C[i] : (C.length === 1 ? C[0] : '');
-        const dVal = D[i] !== undefined ? D[i] : (D.length === 1 ? D[0] : '');
-        blockData.push([bVal, cVal, dVal]);
+      if (g.hasSelectMarker) {
+        // Разворачиваем списки для строк с ">"
+        for(let i=0; i<k; i++) {
+          const bVal = B[i] !== undefined ? B[i] : (B.length === 1 ? B[0] : '');
+          const cVal = C[i] !== undefined ? C[i] : (C.length === 1 ? C[0] : '');
+          const dVal = D[i] !== undefined ? D[i] : (D.length === 1 ? D[0] : '');
+          blockData.push([bVal, cVal, dVal]);
+        }
+      } else {
+        // Для обычных строк - копируем оригинальные значения
+        const originalValues = shStud.getRange(r0, COL_B, 1, 3).getValues()[0];
+        for(let i=0; i<k; i++) {
+          blockData.push([...originalValues]);
+        }
       }
 
       // Вставляем данные только если строка НЕ сгруппирована в STUDENT
@@ -141,32 +149,39 @@ async function menuExpandSurgically_Final() {
         shDev.insertRowsAfter(r0, k - 1);
       }
 
-      const valuesBlockBCD = shStud.getRange(r0, COL_B, k, 3).getValues();
+      // Копируем расширенный диапазон B-R из STUDENT в DEV
+      const valuesExtended = shStud.getRange(r0, COL_B, k, 18).getValues(); // B-R = 18 столбцов
 
       // Вставляем данные в DEV только если строка НЕ сгруппирована в DEV
       if (!isRowGrouped_(shDev, r0)) {
-        shDev.getRange(r0, COL_B, k, 3).setValues(valuesBlockBCD);
+        shDev.getRange(r0, COL_B, k, 18).setValues(valuesExtended);
       }
 
-      const templateFormulasEFGH = shDev.getRange(r0, COL_E, 1, 4).getFormulas()[0];
-      const newBlockFormulasEFGH = [];
-      for (let i = 0; i < k; i++) {
-        const newRow = templateFormulasEFGH.map(formulaText => adjustCellReferences_(formulaText, i));
-        newBlockFormulasEFGH.push(newRow);
+      // Для строк с ">" также устанавливаем формулы в столбцах E-H
+      if (g.hasSelectMarker) {
+        const templateFormulasEFGH = shDev.getRange(r0, COL_E, 1, 4).getFormulas()[0];
+        const newBlockFormulasEFGH = [];
+        for (let i = 0; i < k; i++) {
+          const newRow = templateFormulasEFGH.map(formulaText => adjustCellReferences_(formulaText, i));
+          newBlockFormulasEFGH.push(newRow);
+        }
+
+        // Вставляем формулы в DEV только если строка НЕ сгруппирована в DEV
+        if (!isRowGrouped_(shDev, r0)) {
+          shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
+        }
       }
 
-      // Вставляем формулы в DEV только если строка НЕ сгруппирована в DEV
-      if (!isRowGrouped_(shDev, r0)) {
-        shDev.getRange(r0, COL_E, k, 4).setFormulas(newBlockFormulasEFGH);
-      }
-
-      return { row: r0, count: k };
+      return { row: r0, count: k, hasSelectMarker: g.hasSelectMarker };
     });
 
     // Ждем завершения всех операций
     const results = await Promise.all(promises);
     
-    SpreadsheetApp.getUi().alert(`✅ Готово! Обработано ${results.length} групп строк. Смыслы раскрыты и синхронизированы в DEV.`);
+    const expandedCount = results.filter(r => r.hasSelectMarker).length;
+    const copiedCount = results.length - expandedCount;
+    
+    SpreadsheetApp.getUi().alert(`✅ Готово! Обработано ${results.length} строк:\n- Развернуто списков: ${expandedCount}\n- Скопировано как есть: ${copiedCount}\nСмыслы раскрыты и синхронизированы в DEV.`);
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка [3. Раскрыть смыслы]: ' + (e.stack || e.message || e));
@@ -890,7 +905,6 @@ function pasteSelectedValues_Bidirectional() {
       throw new Error(`Ошибка при вставке данных: ${e.message}`);
     }
 
-    // Простое сообщение об успехе
     const direction = isToStudent ? 'DEV → STUDENT' : 'STUDENT → DEV';
     const copyType = isToStudent ? 'только значения' : 'значения и формулы';
     
@@ -1188,9 +1202,21 @@ function collectSelectedRows_WithParsedLists_(shStud){
 
     const aClean = (A[r-1] || '').replace(/[\u200B\u200C\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ').trim();
 
-    // УБИРАЕМ проверку на MARK_SELECT - обрабатываем ВСЕ строки
-    // if (!aClean.includes(MARK_SELECT)) continue; ← УДАЛИТЬ ЭТУ СТРОКУ
+    // Обрабатываем ТОЛЬКО строки с ">"
+    const hasSelectMarker = aClean.includes(MARK_SELECT);
+    if (!hasSelectMarker) {
+      // Для строк без ">" - добавляем как есть (k=1)
+      const meta = { 
+        k: 1, 
+        B: [B[r-1].trim()], 
+        C: [C[r-1].trim()], 
+        D: [D[r-1].trim()] 
+      };
+      res.push({ rowIndex: r, meta, hasSelectMarker: false });
+      continue;
+    }
 
+    // Для строк с ">" - разбираем списки
     const listB = parseNumberedList_(B[r-1]);
     const listC = parseNumberedList_(C[r-1]);
     const listD = parseNumberedList_(D[r-1]);
@@ -1200,7 +1226,7 @@ function collectSelectedRows_WithParsedLists_(shStud){
     const k = Math.max(valB.length, valC.length, valD.length, 1);
     
     const meta = { k, B: valB, C: valC, D: valD };
-    res.push({ rowIndex: r, meta });
+    res.push({ rowIndex: r, meta, hasSelectMarker: true });
   }
   return res;
 }
