@@ -67,11 +67,90 @@ function onOpen() {
       .addSeparator()
       .addItem('[>] Раскрыть смыслы (> маркер)', 'menuExpandSurgically_Final') 
       .addSeparator()
-      .addItem('[SYNC] Полная синхронизация ученику (без формул)', 'menuDeliverExpanded_Final')
+      .addItem('[SYNC] Полная синхронизация ученику (без формул использовать только при добавлении новых строк)', 'menuDeliverExpanded_Final')
       .addSeparator();
   }
   
   menu.addToUi();
+}
+
+
+function menuExpandSurgically_Final() {
+  try {
+    const { devId, studentId } = resolveDevStudentByContext_();
+    
+    const ssStud = SpreadsheetApp.openById(studentId);
+    const shStud = ssStud.getActiveSheet();
+    const sheetName = shStud.getName();
+    
+    const ssDev = SpreadsheetApp.openById(devId);
+    const shDev = ssDev.getSheetByName(sheetName) || ssDev.insertSheet(sheetName);
+
+    const lastRow = shStud.getLastRow();
+    if (lastRow < 1) {
+      SpreadsheetApp.getUi().alert('STUDENT файл пустой');
+      return;
+    }
+
+    // Собираем строки с маркером ">" в колонке A из STUDENT
+    const rowsWithMarker = [];
+    const aValues = shStud.getRange(1, 1, lastRow, 1).getDisplayValues();
+    
+    for (let r = 0; r < aValues.length; r++) {
+      const aValue = String(aValues[r][0] || '').trim();
+      // Ищем строки с маркером ">" и пропускаем сгруппированные
+      if (aValue.includes('>') && !isRowGrouped_(shStud, r + 1)) {
+        rowsWithMarker.push(r + 1);
+      }
+    }
+
+    if (rowsWithMarker.length === 0) {
+      SpreadsheetApp.getUi().alert('Не найдено строк с маркером ">" в колонке A STUDENT');
+      return;
+    }
+
+    // Обрабатываем каждую строку с маркером (ТОЛЬКО В DEV)
+    let expandedCount = 0;
+    
+    for (const row of rowsWithMarker) {
+      // Получаем данные из STUDENT
+      const bValue = shStud.getRange(row, COL_B).getValue();
+      const cValue = shStud.getRange(row, COL_C).getValue();
+      const dValue = shStud.getRange(row, COL_D).getValue();
+      
+      // Парсим нумерованные списки
+      const bItems = parseNumberedList_(bValue);
+      const cItems = parseNumberedList_(cValue);
+      const dItems = parseNumberedList_(dValue);
+      
+      const maxItems = Math.max(bItems.length, cItems.length, dItems.length, 1);
+      
+      if (maxItems > 1) {
+        // Вставляем дополнительные строки ТОЛЬКО В DEV
+        shDev.insertRowsAfter(row, maxItems - 1);
+        
+        // Копируем форматирование ТОЛЬКО В DEV
+        copyRowFormat_(shDev, row, row + 1, maxItems - 1);
+        
+        // Заполняем данные ТОЛЬКО В DEV
+        for (let i = 0; i < maxItems; i++) {
+          const targetRow = row + i;
+          if (!isRowGrouped_(shDev, targetRow)) {
+            shDev.getRange(targetRow, COL_B).setValue(bItems[i] || '');
+            shDev.getRange(targetRow, COL_C).setValue(cItems[i] || '');
+            shDev.getRange(targetRow, COL_D).setValue(dItems[i] || '');
+          }
+        }
+        
+        expandedCount++;
+      }
+    }
+
+    SpreadsheetApp.getUi().alert(`✅ Раскрыто ${expandedCount} строк с маркером ">" в DEV`);
+
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Ошибка при раскрытии смыслов: ' + (e.message || e));
+  }
 }
 
 /***** === ЗАБРАТЬ EFG У УЧЕНИКА СО СМЕЩЕНИЕМ В E ===*****/
