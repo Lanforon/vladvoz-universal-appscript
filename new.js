@@ -33,7 +33,7 @@ const COL_A = 1, COL_B = 2, COL_C = 3, COL_D = 4, COL_E = 5, COL_F = 6, COL_G = 
 const MARK_SELECT = '>';
 
 
-ы
+
 function onOpen() {
   const me = Session.getEffectiveUser().getEmail();
   if (!ALLOWED_EMAILS.includes(me)) return;
@@ -64,12 +64,12 @@ function onOpen() {
       .addItem('3. Отдать ВКЛАДКУ [DEV > STUD]', 'menuDeliverExpanded_Final')
       .addSeparator()
       .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
-      .addSeparator();
+      .addSeparator()
+      .addItem('🔄 Добавить IF к GPT', 'f3');
   }
   
   menu.addToUi();
 }
-
 
 function menuExpandSurgically_Final() {
   try {
@@ -304,6 +304,44 @@ function f2() {
   }
 }
 
+function f3() {
+  try {
+    const sheet = SpreadsheetApp.getActiveSheet();
+    const range = sheet.getActiveRange();
+    
+    if (!range) {
+      SpreadsheetApp.getUi().alert('Выделите диапазон и повторите.');
+      return;
+    }
+
+    const formulas = range.getFormulas();
+    let replacedCount = 0;
+
+    for (let r = 0; r < formulas.length; r++) {
+      for (let c = 0; c < formulas[r].length; c++) {
+        const formula = formulas[r][c];
+        
+        if (formula && formula.toLowerCase().includes('gpt(')) {
+          const newFormula = `=IF($C$7=""; ${formula.substring(1)}; "")`;
+          
+          const cell = range.getCell(r + 1, c + 1);
+          cell.setFormula(newFormula);
+          replacedCount++;
+        }
+      }
+    }
+
+    if (replacedCount > 0) {
+      SpreadsheetApp.getUi().alert(`✅ Добавлен IF к ${replacedCount} формулам GPT`);
+    } else {
+      SpreadsheetApp.getUi().alert('Не найдено формул с gpt( в выделенном диапазоне');
+    }
+
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Ошибка: ' + (e.message || e));
+  }
+}
+
 function menuDeliverToStudent_AutoContext() {
   try {
     const { sheet, row } = resolveRegistryRowContext_();
@@ -354,28 +392,63 @@ function menuDeliverToStudent_AutoContext() {
       // Обновляем данные в реестре
       sheet.getRange(row, COLS.studentUrl).setValue(studUrl);
       SpreadsheetApp.flush(); // Принудительно сохраняем изменения
+      
+      // --- ДОБАВЛЕНО: АВТОМАТИЧЕСКИ ОТДАЕМ BCD ПРИ СОЗДАНИИ STUDENT ---
+      SpreadsheetApp.getUi().alert('🔄 Автоматически копирую данные BCD из DEV в STUDENT...');
+      
+      const ssDev = SpreadsheetApp.openById(currentFileId);
+      const shDev = ssDev.getActiveSheet();
+      const sheetName = shDev.getName();
+      
+      const ssStud = SpreadsheetApp.openById(studId);
+      const shStud = ssStud.getSheetByName(sheetName) || ssStud.insertSheet(sheetName);
+
+      const lastRow = shDev.getLastRow();
+      
+      if (lastRow >= 1) {
+        let copiedCount = 0;
+
+        // Проходим по всем строкам DEV и копируем BCD в STUDENT
+        for (let r = 1; r <= lastRow; r++) {
+          // Пропускаем сгруппированные строки в обеих таблицах
+          if (isRowGrouped_(shDev, r) || isRowGrouped_(shStud, r)) continue;
+          
+          // Проверяем ячейки B, C, D в DEV
+          const devCellB = shDev.getRange(r, 2); // B
+          const devCellC = shDev.getRange(r, 3); // C
+          const devCellD = shDev.getRange(r, 4); // D
+          
+          const devValueB = devCellB.getValue();
+          const devValueC = devCellC.getValue();
+          const devValueD = devCellD.getValue();
+          
+          // Копируем только непустые ячейки в STUDENT
+          if (devValueB) {
+            shStud.getRange(r, 2).setValue(devValueB);
+            copiedCount++;
+          }
+          if (devValueC) {
+            shStud.getRange(r, 3).setValue(devValueC);
+            copiedCount++;
+          }
+          if (devValueD) {
+            shStud.getRange(r, 4).setValue(devValueD);
+            copiedCount++;
+          }
+        }
+
+        console.log(`Автоматически скопировано ${copiedCount} ячеек BCD при создании STUDENT`);
+      }
+      // --- КОНЕЦ ДОБАВЛЕННОГО КОДА ---
     }
     
     const finalStudUrl = `https://docs.google.com/spreadsheets/d/${studId}/edit`;
-    showLink_('STUDENT готов (создан из текущего DEV, формулы удалены)', finalStudUrl, 'ПЕРЕЙТИ В STUD');
+    showLink_('STUDENT готов (создан из текущего DEV, формулы удалены, данные BCD скопированы)', finalStudUrl, 'ПЕРЕЙТИ В STUD');
     
   } catch (e) {
+    console.error('Ошибка при создании STUDENT:', e);
     SpreadsheetApp.getUi().alert('Ошибка создания STUDENT: ' + (e.message || e));
   }
-}
-
-// Вспомогательная функция для удаления формул из STUDENT
-function removeFormulasFromStudent_(studentId) {
-  const studentSS = SpreadsheetApp.openById(studentId);
-  const sheets = studentSS.getSheets();
-  
-  sheets.forEach(sheet => {
-    const range = sheet.getDataRange();
-    const values = range.getValues();
-    
-    // Записываем только значения (без формул)
-    range.setValues(values);
-  });
 }
 
 function removeFormulasFromStudent_(studentId) {
