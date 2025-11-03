@@ -548,8 +548,9 @@ function menuExpandSurgically_Final() {
 
     let expandedCount = 0;
 
-    // Обрабатываем каждую строку с маркером в DEV
-    for (const row of rowsWithMarker) {
+    for (let i = rowsWithMarker.length - 1; i >= 0; i--) {
+      const row = rowsWithMarker[i];
+      
       // Получаем данные из DEV
       const bValue = shDev.getRange(row, 2).getValue();
       const cValue = shDev.getRange(row, 3).getValue();
@@ -563,7 +564,6 @@ function menuExpandSurgically_Final() {
       const dItems = parseNumberedListEnhanced_(dValue);
       
       console.log(`Строка ${row}: B items=${bItems.length}, C items=${cItems.length}, D items=${dItems.length}`);
-      console.log(`B: ${bItems}, C: ${cItems}, D: ${dItems}`);
       
       const maxItems = Math.max(bItems.length, cItems.length, dItems.length, 1);
       
@@ -577,13 +577,15 @@ function menuExpandSurgically_Final() {
         copyRowFormat_(shDev, row, row + 1, maxItems - 1);
         
         // Заполняем данные в DEV
-        for (let i = 0; i < maxItems; i++) {
-          const targetRow = row + i;
-          if (!isRowGrouped_(shDev, targetRow)) {
-            shDev.getRange(targetRow, 2).setValue(bItems[i] || '');
-            shDev.getRange(targetRow, 3).setValue(cItems[i] || '');
-            shDev.getRange(targetRow, 4).setValue(dItems[i] || '');
+        for (let j = 0; j < maxItems; j++) {
+          const targetRow = row + j;
+          // Убираем маркер ">" со всех строк кроме первой
+          if (j > 0) {
+            shDev.getRange(targetRow, 1).setValue('');
           }
+          shDev.getRange(targetRow, 2).setValue(bItems[j] || '');
+          shDev.getRange(targetRow, 3).setValue(cItems[j] || '');
+          shDev.getRange(targetRow, 4).setValue(dItems[j] || '');
         }
         
         expandedCount++;
