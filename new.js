@@ -33,9 +33,6 @@ const COL_B=2, COL_C=3, COL_D=4;
 
 
 
-
-
-
 function onOpen() {
   const me = Session.getEffectiveUser().getEmail();
   if (!ALLOWED_EMAILS.includes(me)) return;
@@ -43,31 +40,29 @@ function onOpen() {
   const currentFile = SpreadsheetApp.getActive();
   const currentFileName = currentFile.getName();
   
-  const menu = SpreadsheetApp.getUi().createMenu('[+] UTILIES [+]');
+  const menu = SpreadsheetApp.getUi().createMenu('Утилиты');
   
-  // Если НЕ находимся в DEV файле - показываем кнопки создания DEV
   if (!/^DEV\s—\s/i.test(currentFileName) && !/^STUDENT\s—\s/i.test(currentFileName)) {
     menu
       .addSeparator()
-      .addItem('🎯 СОЗДАТЬ DEV - ФАБРИКА', 'menuDevelopFactory')
+      .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
       .addSeparator()
-      .addItem('🎯 СОЗДАТЬ DEV - НЕ ФАБРИКА', 'menuDevelopNoFactory')
+      .addItem('СОЗДАТЬ DEV - НЕ КЛУБ', 'menuDevelopNoFactory')
       .addSeparator();
   }
   
-  // Показываем функции только в DEV файлах
   if (/^DEV\s—\s/i.test(currentFileName)) {
     menu
       .addSeparator()
-      .addItem('[++] Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
+      .addItem('1. Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
       .addSeparator()
-      .addItem('[+][BCD] Забрать BCD колонки - у ученика', 'pasteSelectedValues_Bidirectional')
-      .addItem('[-][BCD] ОТДАТЬ BCD', 'f2')
-      .addItem('[+][EFG] Забрать EFG → E - у ученика', 'f1')
+      .addItem('2. Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
+      .addItem('2. Отдать BCD [DEV > STUD] ', 'f2')
       .addSeparator()
-      .addItem('[>] Раскрыть смыслы (> маркер)', 'menuExpandSurgically_Final') 
+      .addItem('3. Раскрыть > в DEV', 'menuExpandSurgically_Final') 
+      .addItem('3. Отдать ВКЛАДКУ [DEV > STUD]', 'menuDeliverExpanded_Final')
       .addSeparator()
-      .addItem('[SYNC] Полная синхронизация ученику (без формул использовать только при добавлении новых строк)', 'menuDeliverExpanded_Final')
+      .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
       .addSeparator();
   }
   
@@ -297,15 +292,25 @@ function menuDeliverToStudent_AutoContext() {
     }
     
     if (!studId) {
-      // Используем DEV файл для создания STUDENT
-      SpreadsheetApp.getUi().alert('🔄 Начинаю создание STUDENT файла...');
+      SpreadsheetApp.getUi().alert('🔄 Начинаю создание STUDENT файла из текущего DEV...');
 
-      const devUrl = String(sheet.getRange(row, COLS.devUrl).getValue() || '').trim();
-      if (!devUrl) throw new Error('Сначала создайте DEV файл');
+      const currentFile = SpreadsheetApp.getActive();
+      const currentFileId = currentFile.getId();
+      const currentFileName = currentFile.getName();
       
-      const devId = fileIdFromUrl_(devUrl);
+      if (!/^DEV\s—\s/i.test(currentFileName)) {
+        throw new Error('Текущий файл не является DEV файлом. Откройте DEV файл и запустите функцию снова.');
+      }
+      
+      const devUrlInRegistry = String(sheet.getRange(row, COLS.devUrl).getValue() || '').trim();
+      const devIdInRegistry = fileIdFromUrl_(devUrlInRegistry);
+      
+      if (currentFileId !== devIdInRegistry) {
+        throw new Error('Текущий DEV файл не соответствует записи в реестре. Откройте правильный DEV файл.');
+      }
+      
       const folder = DriveApp.getFolderById(TARGET_FOLDER_ID);
-      const studFile = DriveApp.getFileById(devId).makeCopy(`STUDENT — ${order}`, folder);
+      const studFile = DriveApp.getFileById(currentFileId).makeCopy(`STUDENT — ${order}`, folder);
       studId = studFile.getId();
       
       // Убираем формулы из STUDENT
@@ -314,14 +319,32 @@ function menuDeliverToStudent_AutoContext() {
       DriveApp.getFileById(studId).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
       const studUrl = `https://docs.google.com/spreadsheets/d/${studId}/edit`;
       sheet.getRange(row, COLS.studentUrl).setValue(studUrl);
+      
+      // Обновляем данные в реестре
+      sheet.getRange(row, COLS.studentUrl).setValue(studUrl);
+      SpreadsheetApp.flush(); // Принудительно сохраняем изменения
     }
     
     const finalStudUrl = `https://docs.google.com/spreadsheets/d/${studId}/edit`;
-    showLink_('STUDENT готов (создан из DEV, формулы удалены)', finalStudUrl, 'ПЕРЕЙТИ В STUD');
+    showLink_('STUDENT готов (создан из текущего DEV, формулы удалены)', finalStudUrl, 'ПЕРЕЙТИ В STUD');
     
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка создания STUDENT: ' + (e.message || e));
   }
+}
+
+// Вспомогательная функция для удаления формул из STUDENT
+function removeFormulasFromStudent_(studentId) {
+  const studentSS = SpreadsheetApp.openById(studentId);
+  const sheets = studentSS.getSheets();
+  
+  sheets.forEach(sheet => {
+    const range = sheet.getDataRange();
+    const values = range.getValues();
+    
+    // Записываем только значения (без формул)
+    range.setValues(values);
+  });
 }
 
 function removeFormulasFromStudent_(studentId) {
