@@ -98,11 +98,13 @@ function menuExpandSurgically_Final() {
     
     for (let r = 0; r < aValues.length; r++) {
       const aValue = String(aValues[r][0] || '').trim();
-      // Ищем строки с маркером ">" и пропускаем сгруппированные
+      // Ищем строки с маркером ">" в колонке A и пропускаем сгруппированные
       if (aValue.includes('>') && !isRowGrouped_(shStud, r + 1)) {
         rowsWithMarker.push(r + 1);
       }
     }
+
+    console.log('Найдено строк с маркером ">" в колонке A:', rowsWithMarker);
 
     if (rowsWithMarker.length === 0) {
       SpreadsheetApp.getUi().alert('Не найдено строк с маркером ">" в колонке A STUDENT');
@@ -112,20 +114,28 @@ function menuExpandSurgically_Final() {
     // Обрабатываем каждую строку с маркером (ТОЛЬКО В DEV)
     let expandedCount = 0;
     
-    for (const row of rowsWithMarker) {
+    // Обрабатываем строки в обратном порядке чтобы не сбивать нумерацию
+    rowsWithMarker.reverse().forEach(row => {
       // Получаем данные из STUDENT
-      const bValue = shStud.getRange(row, COL_B).getValue();
-      const cValue = shStud.getRange(row, COL_C).getValue();
-      const dValue = shStud.getRange(row, COL_D).getValue();
+      const aValue = shStud.getRange(row, 1).getValue();
+      const bValue = shStud.getRange(row, 2).getValue();
+      const cValue = shStud.getRange(row, 3).getValue();
+      const dValue = shStud.getRange(row, 4).getValue();
       
-      // Парсим нумерованные списки
+      console.log(`Строка ${row}: A="${aValue}", B="${bValue}", C="${cValue}", D="${dValue}"`);
+      
+      // Парсим нумерованные списки из колонок B, C, D
       const bItems = parseNumberedList_(bValue);
       const cItems = parseNumberedList_(cValue);
       const dItems = parseNumberedList_(dValue);
       
       const maxItems = Math.max(bItems.length, cItems.length, dItems.length, 1);
       
+      console.log(`Строка ${row}: B items=${bItems.length}, C items=${cItems.length}, D items=${dItems.length}, max=${maxItems}`);
+      
       if (maxItems > 1) {
+        console.log(`Раскрываем строку ${row} на ${maxItems} элементов`);
+        
         // Вставляем дополнительные строки ТОЛЬКО В DEV
         shDev.insertRowsAfter(row, maxItems - 1);
         
@@ -135,20 +145,20 @@ function menuExpandSurgically_Final() {
         // Заполняем данные ТОЛЬКО В DEV
         for (let i = 0; i < maxItems; i++) {
           const targetRow = row + i;
-          if (!isRowGrouped_(shDev, targetRow)) {
-            shDev.getRange(targetRow, COL_B).setValue(bItems[i] || '');
-            shDev.getRange(targetRow, COL_C).setValue(cItems[i] || '');
-            shDev.getRange(targetRow, COL_D).setValue(dItems[i] || '');
-          }
+          shDev.getRange(targetRow, 1).setValue(aValue); // Колонка A без изменений
+          shDev.getRange(targetRow, 2).setValue(bItems[i] || '');
+          shDev.getRange(targetRow, 3).setValue(cItems[i] || '');
+          shDev.getRange(targetRow, 4).setValue(dItems[i] || '');
         }
         
         expandedCount++;
       }
-    }
+    });
 
     SpreadsheetApp.getUi().alert(`✅ Раскрыто ${expandedCount} строк с маркером ">" в DEV`);
 
   } catch (e) {
+    console.error('Ошибка:', e);
     SpreadsheetApp.getUi().alert('Ошибка при раскрытии смыслов: ' + (e.message || e));
   }
 }
@@ -504,7 +514,93 @@ function resolveDevStudentByContext_() {
   };
 }
 
-function parseNumberedList_(text) {
+function menuExpandSurgically_Final() {
+  try {
+    const { devId } = resolveDevStudentByContext_();
+    
+    const ssDev = SpreadsheetApp.openById(devId);
+    const shDev = ssDev.getActiveSheet();
+    const sheetName = shDev.getName();
+
+    const lastRow = shDev.getLastRow();
+    if (lastRow < 1) {
+      SpreadsheetApp.getUi().alert('DEV файл пустой');
+      return;
+    }
+
+    // Собираем строки с маркером ">" из DEV
+    const rowsWithMarker = [];
+    const aValues = shDev.getRange(1, 1, lastRow, 1).getDisplayValues();
+    
+    for (let r = 0; r < aValues.length; r++) {
+      const aValue = String(aValues[r][0] || '').trim();
+      if (aValue.includes('>') && !isRowGrouped_(shDev, r + 1)) {
+        rowsWithMarker.push(r + 1);
+      }
+    }
+
+    console.log('Найдено строк с маркером ">" в DEV:', rowsWithMarker);
+
+    if (rowsWithMarker.length === 0) {
+      SpreadsheetApp.getUi().alert('Не найдено строк с маркером ">" в DEV');
+      return;
+    }
+
+    let expandedCount = 0;
+
+    // Обрабатываем каждую строку с маркером в DEV
+    for (const row of rowsWithMarker) {
+      // Получаем данные из DEV
+      const bValue = shDev.getRange(row, 2).getValue();
+      const cValue = shDev.getRange(row, 3).getValue();
+      const dValue = shDev.getRange(row, 4).getValue();
+      
+      console.log(`Строка ${row}: B="${bValue}", C="${cValue}", D="${dValue}"`);
+      
+      // Парсим списки из DEV
+      const bItems = parseNumberedListEnhanced_(bValue);
+      const cItems = parseNumberedListEnhanced_(cValue);
+      const dItems = parseNumberedListEnhanced_(dValue);
+      
+      console.log(`Строка ${row}: B items=${bItems.length}, C items=${cItems.length}, D items=${dItems.length}`);
+      console.log(`B: ${bItems}, C: ${cItems}, D: ${dItems}`);
+      
+      const maxItems = Math.max(bItems.length, cItems.length, dItems.length, 1);
+      
+      if (maxItems > 1) {
+        console.log(`Раскрываем строку ${row} на ${maxItems} элементов`);
+        
+        // Вставляем дополнительные строки в DEV
+        shDev.insertRowsAfter(row, maxItems - 1);
+        
+        // Копируем форматирование в DEV
+        copyRowFormat_(shDev, row, row + 1, maxItems - 1);
+        
+        // Заполняем данные в DEV
+        for (let i = 0; i < maxItems; i++) {
+          const targetRow = row + i;
+          if (!isRowGrouped_(shDev, targetRow)) {
+            shDev.getRange(targetRow, 2).setValue(bItems[i] || '');
+            shDev.getRange(targetRow, 3).setValue(cItems[i] || '');
+            shDev.getRange(targetRow, 4).setValue(dItems[i] || '');
+          }
+        }
+        
+        expandedCount++;
+      } else {
+        console.log(`Строка ${row}: недостаточно элементов для раскрытия (max=${maxItems})`);
+      }
+    }
+
+    SpreadsheetApp.getUi().alert(`✅ Раскрыто ${expandedCount} строк с маркером ">" в DEV`);
+
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Ошибка при раскрытии смыслов: ' + (e.message || e));
+  }
+}
+
+/***** === УЛУЧШЕННАЯ ФУНКЦИЯ ДЛЯ ПАРСИНГА СПИСКОВ ===*****/
+function parseNumberedListEnhanced_(text) {
   if (!text) return [];
   
   const cleanedText = String(text)
@@ -521,14 +617,109 @@ function parseNumberedList_(text) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
 
-    // Ищем нумерованные пункты (1., 2., 3. и т.д.)
+    // Расширенный поиск нумерованных пунктов:
+    // 1. "1. текст", "2. текст"
+    const matchDot = trimmedLine.match(/^\s*(\d{1,2})\.\s*(.+)$/);
+    // 2. "1) текст", "2) текст"  
+    const matchBracket = trimmedLine.match(/^\s*(\d{1,2})\)\s*(.+)$/);
+    // 3. "1 текст", "2 текст"
+    const matchNumber = trimmedLine.match(/^\s*(\d{1,2})\s+(.+)$/);
+    // 4. Любой текст с переносами строк
+    const hasMultipleLines = lines.length > 1;
+
+    if (matchDot) {
+      items.push(matchDot[2].trim());
+    } else if (matchBracket) {
+      items.push(matchBracket[2].trim());
+    } else if (matchNumber) {
+      items.push(matchNumber[2].trim());
+    } else if (hasMultipleLines) {
+      // Если есть несколько строк, но без нумерации - берем все
+      items.push(trimmedLine);
+    }
+  }
+
+  // Если ничего не найдено, но есть текст - возвращаем как один элемент
+  return items.length > 0 ? items : [cleanedText];
+}
+
+
+function parseNumberedListSimple_(text) {
+  if (!text) return [];
+  
+  const cleanedText = String(text)
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00A0/g, ' ')
+    .trim();
+
+  if (!cleanedText) return [];
+
+  const items = [];
+  const lines = cleanedText.split('\n');
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    // Ищем нумерованные пункты
     const match = trimmedLine.match(/^\s*(\d{1,2})[\.\)]\s*(.+)$/);
     if (match) {
       items.push(match[2].trim());
+    } else {
+      // Если не нашли нумерацию, но есть текст - добавляем как есть
+      items.push(trimmedLine);
     }
   }
 
   return items.length > 0 ? items : [cleanedText];
+}
+
+
+function collectSelectedRows_WithParsedLists_(shStud){
+  const res = [];
+  const last = shStud.getLastRow();
+  if (last < 1) return res;
+
+  const A = shStud.getRange(1, COL_A, last, 1).getDisplayValues().map(r=>String(r[0]||''));
+  const B = shStud.getRange(1, COL_B, last, 1).getDisplayValues().map(r=>String(r[0]||''));
+  const C = shStud.getRange(1, COL_C, last, 1).getDisplayValues().map(r=>String(r[0]||''));
+  const D = shStud.getRange(1, COL_D, last, 1).getDisplayValues().map(r=>String(r[0]||''));
+
+  for (let r = 1; r <= last; r++){
+    // Пропускаем сгруппированные строки
+    if (isRowGrouped_(shStud, r)) {
+      continue;
+    }
+
+    const aClean = (A[r-1] || '').replace(/[\u200B\u200C\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ').trim();
+
+    // Обрабатываем ТОЛЬКО строки с ">"
+    const hasSelectMarker = aClean.includes(MARK_SELECT);
+    if (!hasSelectMarker) {
+      // Для строк без ">" - добавляем как есть (k=1)
+      const meta = { 
+        k: 1, 
+        B: [B[r-1].trim()], 
+        C: [C[r-1].trim()], 
+        D: [D[r-1].trim()] 
+      };
+      res.push({ rowIndex: r, meta, hasSelectMarker: false });
+      continue;
+    }
+
+    // Для строк с ">" - разбираем списки
+    const listB = parseNumberedList_(B[r-1]);
+    const listC = parseNumberedList_(C[r-1]);
+    const listD = parseNumberedList_(D[r-1]);
+    const valB = listB.length ? listB : (B[r-1].trim() ? [B[r-1].trim()] : []);
+    const valC = listC.length ? listC : (C[r-1].trim() ? [C[r-1].trim()] : []);
+    const valD = listD.length ? listD : (D[r-1].trim() ? [D[r-1].trim()] : []);
+    const k = Math.max(valB.length, valC.length, valD.length, 1);
+    
+    const meta = { k, B: valB, C: valC, D: valD };
+    res.push({ rowIndex: r, meta, hasSelectMarker: true });
+  }
+  return res;
 }
 
 function pasteColsBCD_FromDevToStud_(devId, studId) {
