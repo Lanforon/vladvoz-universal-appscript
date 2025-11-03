@@ -29,10 +29,11 @@ const COLS = {
   exp3: 12       // L - Эксперт 3
 };
 
-const COL_B=2, COL_C=3, COL_D=4;
+const COL_A = 1, COL_B = 2, COL_C = 3, COL_D = 4, COL_E = 5, COL_F = 6, COL_G = 7, COL_H = 8;
+const MARK_SELECT = '>';
 
 
-
+ы
 function onOpen() {
   const me = Session.getEffectiveUser().getEmail();
   if (!ALLOWED_EMAILS.includes(me)) return;
@@ -137,7 +138,37 @@ function menuExpandSurgically_Final() {
         // Копируем форматирование ТОЛЬКО В DEV
         copyRowFormat_(shDev, row, row + 1, maxItems - 1);
         
-        // Заполняем данные ТОЛЬКО В DEV
+        // --- ДОБАВЛЕННЫЙ ФУНКЦИОНАЛ: ДУБЛИРОВАНИЕ ФОРМУЛ ИЗ DEV ---
+        // Получаем формулы из исходной строки DEV
+        const sourceDevFormulas = shDev.getRange(row, 1, 1, shDev.getLastColumn()).getFormulas()[0];
+        
+        // Дублируем формулы во все новые строки DEV с адаптацией ссылок
+        for (let i = 1; i < maxItems; i++) {
+          const targetRange = shDev.getRange(row + i, 1, 1, sourceDevFormulas.length);
+          const formulasToSet = sourceDevFormulas.map(formula => 
+            formula ? adjustCellReferences_(formula, i) : ''
+          );
+          targetRange.setFormulas([formulasToSet]);
+        }
+        
+        // --- СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ СТОЛБЦОВ E-H В DEV ---
+        // Получаем формулы шаблона из столбцов E-H исходной строки
+        const templateFormulasEFGH = shDev.getRange(row, COL_E, 1, 4).getFormulas()[0];
+        const newBlockFormulasEFGH = [];
+        
+        // Создаем адаптированные формулы для всех строк (включая исходную)
+        for (let i = 0; i < maxItems; i++) {
+          const newRow = templateFormulasEFGH.map(formulaText => 
+            adjustCellReferences_(formulaText, i)
+          );
+          newBlockFormulasEFGH.push(newRow);
+        }
+        
+        // Устанавливаем формулы для столбцов E-H во всех строках блока
+        shDev.getRange(row, COL_E, maxItems, 4).setFormulas(newBlockFormulasEFGH);
+        // --- КОНЕЦ ДОБАВЛЕННОГО ФУНКЦИОНАЛА ---
+        
+        // Заполняем данные ТОЛЬКО В DEV (только в столбцы A-D, чтобы не перезаписать формулы)
         for (let i = 0; i < maxItems; i++) {
           const targetRow = row + i;
           shDev.getRange(targetRow, 1).setValue(aValue); // Колонка A без изменений
@@ -150,7 +181,7 @@ function menuExpandSurgically_Final() {
       }
     });
 
-    SpreadsheetApp.getUi().alert(`✅ Раскрыто ${expandedCount} строк с маркером ">" в DEV`);
+    SpreadsheetApp.getUi().alert(`✅ Раскрыто ${expandedCount} строк с маркером ">" в DEV\nФормулы автоматически продублированы!`);
 
   } catch (e) {
     console.error('Ошибка:', e);
@@ -466,40 +497,66 @@ function pasteSelectedValues_Bidirectional() {
     }
 
     // Собираем данные из STUDENT (только несгруппированные строки)
-    const bValues = [];
-    const cValues = [];
-    const dValues = [];
-    const rowsToCopy = [];
+    const dataToCopy = [];
 
     for (let r = 1; r <= lastRow; r++) {
-      // Пропускаем сгруппированные строки
       if (isRowGrouped_(shStud, r)) continue;
       
-      rowsToCopy.push(r);
-      bValues.push([shStud.getRange(r, COL_B).getValue()]);
-      cValues.push([shStud.getRange(r, COL_C).getValue()]);
-      dValues.push([shStud.getRange(r, COL_D).getValue()]);
+      dataToCopy.push({
+        row: r,
+        bValue: shStud.getRange(r, COL_B).getValue(),
+        cValue: shStud.getRange(r, COL_C).getValue(),
+        dValue: shStud.getRange(r, COL_D).getValue()
+      });
     }
 
-    if (rowsToCopy.length === 0) {
+    if (dataToCopy.length === 0) {
       SpreadsheetApp.getUi().alert('Не найдено несгруппированных строк в STUDENT');
       return;
     }
 
-    // Копируем в DEV (только несгруппированные строки)
-    for (let i = 0; i < rowsToCopy.length; i++) {
-      const row = rowsToCopy[i];
-      if (!isRowGrouped_(shDev, row)) {
-        shDev.getRange(row, COL_B).setValue(bValues[i][0]);
-        shDev.getRange(row, COL_C).setValue(cValues[i][0]);
-        shDev.getRange(row, COL_D).setValue(dValues[i][0]);
+    // Копируем в DEV (только ячейки без формул)
+    let copiedCount = 0;
+    
+    for (const data of dataToCopy) {
+      const targetRow = data.row;
+      
+      if (!isRowGrouped_(shDev, targetRow)) {
+        // Проверяем каждую ячейку на наличие формулы
+        const rangeB = shDev.getRange(targetRow, COL_B);
+        const rangeC = shDev.getRange(targetRow, COL_C);
+        const rangeD = shDev.getRange(targetRow, COL_D);
+        
+        // Копируем только если в ячейке нет формулы
+        if (!hasFormula_(rangeB)) {
+          rangeB.setValue(data.bValue);
+          copiedCount++;
+        }
+        if (!hasFormula_(rangeC)) {
+          rangeC.setValue(data.cValue);
+          copiedCount++;
+        }
+        if (!hasFormula_(rangeD)) {
+          rangeD.setValue(data.dValue);
+          copiedCount++;
+        }
       }
     }
 
-    SpreadsheetApp.getUi().alert(`✅ Скопировано ${rowsToCopy.length} строк B-C-D из STUDENT в DEV`);
+    SpreadsheetApp.getUi().alert(`✅ Обновлено ${copiedCount} ячеек B-C-D из STUDENT в DEV`);
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка при копировании BCD из STUDENT: ' + (e.message || e));
+  }
+}
+
+// Проверяет, содержит ли ячейка формулу
+function hasFormula_(range) {
+  try {
+    const formula = range.getFormula();
+    return formula && formula.startsWith('=');
+  } catch (e) {
+    return false;
   }
 }
 
@@ -537,92 +594,7 @@ function resolveDevStudentByContext_() {
   };
 }
 
-function menuExpandSurgically_Final() {
-  try {
-    const { devId } = resolveDevStudentByContext_();
-    
-    const ssDev = SpreadsheetApp.openById(devId);
-    const shDev = ssDev.getActiveSheet();
-    const sheetName = shDev.getName();
 
-    const lastRow = shDev.getLastRow();
-    if (lastRow < 1) {
-      SpreadsheetApp.getUi().alert('DEV файл пустой');
-      return;
-    }
-
-    // Собираем строки с маркером ">" из DEV
-    const rowsWithMarker = [];
-    const aValues = shDev.getRange(1, 1, lastRow, 1).getDisplayValues();
-    
-    for (let r = 0; r < aValues.length; r++) {
-      const aValue = String(aValues[r][0] || '').trim();
-      if (aValue.includes('>') && !isRowGrouped_(shDev, r + 1)) {
-        rowsWithMarker.push(r + 1);
-      }
-    }
-
-    console.log('Найдено строк с маркером ">" в DEV:', rowsWithMarker);
-
-    if (rowsWithMarker.length === 0) {
-      SpreadsheetApp.getUi().alert('Не найдено строк с маркером ">" в DEV');
-      return;
-    }
-
-    let expandedCount = 0;
-
-    for (let i = rowsWithMarker.length - 1; i >= 0; i--) {
-      const row = rowsWithMarker[i];
-      
-      // Получаем данные из DEV
-      const bValue = shDev.getRange(row, 2).getValue();
-      const cValue = shDev.getRange(row, 3).getValue();
-      const dValue = shDev.getRange(row, 4).getValue();
-      
-      console.log(`Строка ${row}: B="${bValue}", C="${cValue}", D="${dValue}"`);
-      
-      // Парсим списки из DEV
-      const bItems = parseNumberedListEnhanced_(bValue);
-      const cItems = parseNumberedListEnhanced_(cValue);
-      const dItems = parseNumberedListEnhanced_(dValue);
-      
-      console.log(`Строка ${row}: B items=${bItems.length}, C items=${cItems.length}, D items=${dItems.length}`);
-      
-      const maxItems = Math.max(bItems.length, cItems.length, dItems.length, 1);
-      
-      if (maxItems > 1) {
-        console.log(`Раскрываем строку ${row} на ${maxItems} элементов`);
-        
-        // Вставляем дополнительные строки в DEV
-        shDev.insertRowsAfter(row, maxItems - 1);
-        
-        // Копируем форматирование в DEV
-        copyRowFormat_(shDev, row, row + 1, maxItems - 1);
-        
-        // Заполняем данные в DEV
-        for (let j = 0; j < maxItems; j++) {
-          const targetRow = row + j;
-          // Убираем маркер ">" со всех строк кроме первой
-          if (j > 0) {
-            shDev.getRange(targetRow, 1).setValue('');
-          }
-          shDev.getRange(targetRow, 2).setValue(bItems[j] || '');
-          shDev.getRange(targetRow, 3).setValue(cItems[j] || '');
-          shDev.getRange(targetRow, 4).setValue(dItems[j] || '');
-        }
-        
-        expandedCount++;
-      } else {
-        console.log(`Строка ${row}: недостаточно элементов для раскрытия (max=${maxItems})`);
-      }
-    }
-
-    SpreadsheetApp.getUi().alert(`✅ Раскрыто ${expandedCount} строк с маркером ">" в DEV`);
-
-  } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка при раскрытии смыслов: ' + (e.message || e));
-  }
-}
 
 /***** === УЛУЧШЕННАЯ ФУНКЦИЯ ДЛЯ ПАРСИНГА СПИСКОВ ===*****/
 function parseNumberedListEnhanced_(text) {
@@ -915,7 +887,7 @@ function isRowGrouped_(sheet, rowIndex) {
       const numRows = group.getNumRows();
       const endRow = startRow + numRows - 1;
       
-      if (rowIndex > startRow && rowIndex <= endRow) {
+      if (rowIndex >= startRow && rowIndex <= endRow) {
         return true;
       }
     }
@@ -1004,4 +976,64 @@ function fileIdFromUrl_(url) {
   const m = /\/d\/([a-zA-Z0-9\-_]+)/.exec(String(url)||'');
   if (!m) throw new Error('Не удалось извлечь fileId из URL: '+url);
   return m[1];
+}
+
+/***** === ДОБАВЬТЕ ЭТИ ФУНКЦИИ В КОНЕЦ ФАЙЛА === *****/
+
+function parseNumberedList_(text) {
+  if (!text) return [];
+  
+  const cleanedText = String(text)
+    .replace(/\r\n?/g, '\n')
+    .replace(/\u00A0/g, ' ')
+    .trim();
+
+  if (!cleanedText) return [];
+
+  const items = [];
+  const lines = cleanedText.split('\n');
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    // Ищем нумерованные пункты разных форматов:
+    // 1. "1. текст", "2. текст"
+    const matchDot = trimmedLine.match(/^\s*(\d{1,2})\.\s*(.+)$/);
+    // 2. "1) текст", "2) текст"  
+    const matchBracket = trimmedLine.match(/^\s*(\d{1,2})\)\s*(.+)$/);
+    // 3. "1 текст", "2 текст"
+    const matchNumber = trimmedLine.match(/^\s*(\d{1,2})\s+(.+)$/);
+    // 4. Любой текст с переносами строк
+    const hasMultipleLines = lines.length > 1;
+
+    if (matchDot) {
+      items.push(matchDot[2].trim());
+    } else if (matchBracket) {
+      items.push(matchBracket[2].trim());
+    } else if (matchNumber) {
+      items.push(matchNumber[2].trim());
+    } else if (hasMultipleLines) {
+      // Если есть несколько строк, но без нумерации - берем все
+      items.push(trimmedLine);
+    } else {
+      items.push(trimmedLine);
+    }
+  }
+
+  return items.length > 0 ? items : [cleanedText];
+}
+
+function adjustCellReferences_(formula, rowOffset) {
+  if (!formula || !formula.startsWith('=')) return formula;
+  
+  return formula.replace(/([A-Z])(\d+)/g, function(match, col, row) {
+    const newRow = parseInt(row) + rowOffset;
+    return col + newRow;
+  });
+}
+
+function unfoldFormulasInColumnsAsync_(fileId, columns) {
+  console.log('Разворачиваем формулы в колонках:', columns);
+  return Promise.resolve();
 }
