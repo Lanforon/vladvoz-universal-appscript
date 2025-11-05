@@ -43,18 +43,38 @@ function onOpen() {
   
   const menu = SpreadsheetApp.getUi().createMenu('Утилиты');
   
-  if (!/^DEV\s—\s/i.test(currentFileName) && !/^STUDENT\s—\s/i.test(currentFileName)) {
-    menu
+  // if (!/^DEV\s—\s/i.test(currentFileName) && !/^STUDENT\s—\s/i.test(currentFileName)) {
+  //   menu
+  //     .addSeparator()
+  //     .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
+  //     .addSeparator()
+  //     .addItem('СОЗДАТЬ DEV - НЕ КЛУБ', 'menuDevelopNoFactory')
+  //     .addSeparator();
+  // }
+  menu
       .addSeparator()
       .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
       .addSeparator()
       .addItem('СОЗДАТЬ DEV - НЕ КЛУБ', 'menuDevelopNoFactory')
-      .addSeparator();
-  }
-  
-  if (/^DEV\s—\s/i.test(currentFileName)) {
-    menu
       .addSeparator()
+  
+  // if (/^DEV\s—\s/i.test(currentFileName)) {
+    
+  //   menu
+  //     .addSeparator()
+  //     .addItem('1. Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
+  //     .addSeparator()
+  //     .addItem('2. Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
+  //     .addItem('2. Отдать BCD [DEV > STUD] ', 'f2')
+  //     .addSeparator()
+  //     .addItem('3. Раскрыть > в DEV', 'menuExpandSurgically_Final') 
+  //     .addItem('3. Отдать ВКЛАДКУ [DEV > STUD]', 'menuDeliverExpanded_Final')
+  //     .addSeparator()
+  //     .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
+  //     .addSeparator()
+  //     .addItem('🔄 Добавить IF к GPT', 'f3');
+  // }
+
       .addItem('1. Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
       .addSeparator()
       .addItem('2. Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
@@ -66,7 +86,6 @@ function onOpen() {
       .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
       .addSeparator()
       .addItem('🔄 Добавить IF к GPT', 'f3');
-  }
   
   menu.addToUi();
 }
@@ -304,6 +323,7 @@ function f2() {
   }
 }
 
+/***** === ДОБАВИТЬ IF К GPT ФОРМУЛАМ ===*****/
 function f3() {
   try {
     const sheet = SpreadsheetApp.getActiveSheet();
@@ -342,6 +362,7 @@ function f3() {
   }
 }
 
+/***** === СОЗДАНИЕ STUDENT ФАЙЛА ===*****/
 function menuDeliverToStudent_AutoContext() {
   try {
     const { sheet, row } = resolveRegistryRowContext_();
@@ -451,6 +472,7 @@ function menuDeliverToStudent_AutoContext() {
   }
 }
 
+/***** === УДАЛЕНИЕ ФОРМУЛ ИЗ STUDENT ===*****/
 function removeFormulasFromStudent_(studentId) {
   const ss = SpreadsheetApp.openById(studentId);
   const sheets = ss.getSheets();
@@ -667,9 +689,7 @@ function resolveDevStudentByContext_() {
   };
 }
 
-
-
-/***** === УЛУЧШЕННАЯ ФУНКЦИЯ ДЛЯ ПАРСИНГА СПИСКОВ ===*****/
+/***** === ФУНКЦИЯ ДЛЯ ПАРСИНГА СПИСКОВ ===*****/
 function parseNumberedListEnhanced_(text) {
   if (!text) return [];
   
@@ -1050,8 +1070,6 @@ function fileIdFromUrl_(url) {
   if (!m) throw new Error('Не удалось извлечь fileId из URL: '+url);
   return m[1];
 }
-
-/***** === ДОБАВЬТЕ ЭТИ ФУНКЦИИ В КОНЕЦ ФАЙЛА === *****/
 
 function parseNumberedList_(text) {
   if (!text) return [];
