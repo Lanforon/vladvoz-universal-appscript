@@ -907,18 +907,46 @@ function removeFormulasKeepStyles_(sheet) {
   
   const range = sheet.getRange(1, 1, lastRow, lastCol);
   const formulas = range.getFormulas();
+  const values = range.getValues();
   
-  // Проходим по каждой ячейке и очищаем только те, где есть формулы
-  for (let r = 1; r <= lastRow; r++) {
-    for (let c = 1; c <= lastCol; c++) {
-      const formula = formulas[r-1][c-1];
-      // Если есть формула - очищаем только содержимое
+  // Проходим по каждой ячейке и заменяем формулы на их значения
+  for (let r = 0; r < lastRow; r++) {
+    for (let c = 0; c < lastCol; c++) {
+      const formula = formulas[r][c];
+      
+      // Если есть формула - проверяем результат
       if (formula && formula.startsWith('=')) {
-        const cell = sheet.getRange(r, c);
-        cell.clearContent(); // Очищает только содержимое, сохраняя стили
+        const value = values[r][c];
+        
+        // Если значение содержит ошибку - очищаем ячейку
+        if (isErrorValue_(value)) {
+          values[r][c] = ''; // Очищаем ошибку
+        }
+        // Если нет ошибки - оставляем вычисленное значение как есть
       }
+      // Если нет формулы - значение остается без изменений
     }
   }
+  
+  range.setValues(values);
+}
+
+function isErrorValue_(value) {
+  if (value === null || value === undefined) return false;
+  
+  const stringValue = value.toString();
+  const errorPatterns = [
+    '#ERROR!',
+    '#DIV/0!',
+    '#N/A',
+    '#NAME?',
+    '#NUM!',
+    '#VALUE!',
+    '#REF!',
+    '#NULL!'
+  ];
+  
+  return errorPatterns.some(pattern => stringValue.includes(pattern));
 }
 
 function removeFormulasFromSheet_(sheet) {
