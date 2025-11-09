@@ -114,15 +114,15 @@ function menuExpandSurgically_Final() {
     
     // Обрабатываем строки в обратном порядке чтобы не сбивать нумерацию
     rowsWithMarker.reverse().forEach(row => {
-      // Получаем данные из STUDENT
-      const aValue = shStud.getRange(row, 1).getValue();
-      const bValue = shStud.getRange(row, 2).getValue();
-      const cValue = shStud.getRange(row, 3).getValue();
-      const dValue = shStud.getRange(row, 4).getValue();
+      // ПОЛУЧАЕМ ДАННЫЕ ИЗ DEV (ИЗМЕНЕНИЕ ЗДЕСЬ)
+      const aValue = shDev.getRange(row, 1).getValue();
+      const bValue = shDev.getRange(row, 2).getValue();
+      const cValue = shDev.getRange(row, 3).getValue();
+      const dValue = shDev.getRange(row, 4).getValue();
       
       console.log(`Строка ${row}: A="${aValue}", B="${bValue}", C="${cValue}", D="${dValue}"`);
       
-      // Парсим нумерованные списки из колонок B, C, D
+      // Парсим нумерованные списки из колонок B, C, D DEV
       const bItems = parseNumberedList_(bValue);
       const cItems = parseNumberedList_(cValue);
       const dItems = parseNumberedList_(dValue);
@@ -140,7 +140,7 @@ function menuExpandSurgically_Final() {
         // Копируем форматирование ТОЛЬКО В DEV
         copyRowFormat_(shDev, row, row + 1, maxItems - 1);
         
-        // --- ДОБАВЛЕННЫЙ ФУНКЦИОНАЛ: ДУБЛИРОВАНИЕ ФОРМУЛ ИЗ DEV ---
+        // --- ДУБЛИРОВАНИЕ ФОРМУЛ ИЗ DEV ---
         // Получаем формулы из исходной строки DEV
         const sourceDevFormulas = shDev.getRange(row, 1, 1, shDev.getLastColumn()).getFormulas()[0];
         
@@ -168,7 +168,7 @@ function menuExpandSurgically_Final() {
         
         // Устанавливаем формулы для столбцов E-H во всех строках блока
         shDev.getRange(row, COL_E, maxItems, 4).setFormulas(newBlockFormulasEFGH);
-        // --- КОНЕЦ ДОБАВЛЕННОГО ФУНКЦИОНАЛА ---
+        // --- КОНЕЦ ОБРАБОТКИ ФОРМУЛ ---
         
         // Заполняем данные ТОЛЬКО В DEV (только в столбцы A-D, чтобы не перезаписать формулы)
         for (let i = 0; i < maxItems; i++) {
@@ -1166,34 +1166,60 @@ function parseNumberedList_(text) {
   const items = [];
   const lines = cleanedText.split('\n');
   
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (!trimmedLine) continue;
+  let currentItem = '';
+  let currentNumber = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
 
-    // Ищем нумерованные пункты разных форматов:
-    // 1. "1. текст", "2. текст"
-    const matchDot = trimmedLine.match(/^\s*(\d{1,2})\.\s*(.+)$/);
-    // 2. "1) текст", "2) текст"  
-    const matchBracket = trimmedLine.match(/^\s*(\d{1,2})\)\s*(.+)$/);
-    // 3. "1 текст", "2 текст"
-    const matchNumber = trimmedLine.match(/^\s*(\d{1,2})\s+(.+)$/);
-    // 4. Любой текст с переносами строк
-    const hasMultipleLines = lines.length > 1;
-
-    if (matchDot) {
-      items.push(matchDot[2].trim());
-    } else if (matchBracket) {
-      items.push(matchBracket[2].trim());
-    } else if (matchNumber) {
-      items.push(matchNumber[2].trim());
-    } else if (hasMultipleLines) {
-      // Если есть несколько строк, но без нумерации - берем все
-      items.push(trimmedLine);
+    // Проверяем, начинается ли строка с нового нумерованного пункта
+    const matchNumber = line.match(/^\s*(\d{1,2})[\.\)]\s*(.*)$/) || 
+                       line.match(/^\s*(\d{1,2})\s+(.*)$/);
+    
+    if (matchNumber) {
+      const number = parseInt(matchNumber[1]);
+      const content = matchNumber[2].trim();
+      
+      // Если у нас уже есть собранный элемент, сохраняем его
+      if (currentItem !== '') {
+        items.push(currentItem.trim());
+      }
+      
+      // Начинаем новый элемент
+      currentNumber = number;
+      currentItem = content;
+      
+      // Проверяем следующий элемент - если он тоже нумерованный, то это отдельный пункт
+      if (i < lines.length - 1) {
+        const nextLine = lines[i + 1].trim();
+        const nextMatch = nextLine.match(/^\s*(\d{1,2})[\.\)]\s*/) || 
+                         nextLine.match(/^\s*(\d{1,2})\s+/);
+        
+        if (nextMatch && parseInt(nextMatch[1]) === number + 1) {
+          // Следующий элемент имеет следующий номер - заканчиваем текущий
+          items.push(currentItem.trim());
+          currentItem = '';
+          currentNumber = null;
+        }
+      }
     } else {
-      items.push(trimmedLine);
+      // Это продолжение текущего элемента
+      if (currentItem !== '') {
+        currentItem += '\n' + line;
+      } else {
+        // Если нет текущего элемента, начинаем новый
+        currentItem = line;
+      }
     }
   }
+  
+  // Добавляем последний элемент
+  if (currentItem !== '') {
+    items.push(currentItem.trim());
+  }
 
+  // Если не нашли структурированных элементов, возвращаем весь текст как один элемент
   return items.length > 0 ? items : [cleanedText];
 }
 
