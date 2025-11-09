@@ -35,46 +35,26 @@ const MARK_SELECT = '>';
 
 
 function onOpen() {
-  const me = Session.getEffectiveUser().getEmail();
-  if (!ALLOWED_EMAILS.includes(me)) return;
 
   const currentFile = SpreadsheetApp.getActive();
   const currentFileName = currentFile.getName();
   
   const menu = SpreadsheetApp.getUi().createMenu('Утилиты');
   
-  // if (!/^DEV\s—\s/i.test(currentFileName) && !/^STUDENT\s—\s/i.test(currentFileName)) {
-  //   menu
-  //     .addSeparator()
-  //     .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
-  //     .addSeparator()
-  //     .addItem('СОЗДАТЬ DEV - НЕ КЛУБ', 'menuDevelopNoFactory')
-  //     .addSeparator();
-  // }
-  menu
+  // Для БАЗА файлов - показываем только создание DEV
+  if (/БАЗА/i.test(currentFileName)) {
+    menu
       .addSeparator()
       .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
       .addSeparator()
       .addItem('СОЗДАТЬ DEV - НЕ КЛУБ', 'menuDevelopNoFactory')
-      .addSeparator()
+      .addSeparator();
+  }
   
-  // if (/^DEV\s—\s/i.test(currentFileName)) {
-    
-  //   menu
-  //     .addSeparator()
-  //     .addItem('1. Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
-  //     .addSeparator()
-  //     .addItem('2. Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
-  //     .addItem('2. Отдать BCD [DEV > STUD] ', 'f2')
-  //     .addSeparator()
-  //     .addItem('3. Раскрыть > в DEV', 'menuExpandSurgically_Final') 
-  //     .addItem('3. Отдать ВКЛАДКУ [DEV > STUD]', 'menuDeliverExpanded_Final')
-  //     .addSeparator()
-  //     .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
-  //     .addSeparator()
-  //     .addItem('🔄 Добавить IF к GPT', 'f3');
-  // }
-
+  // Для DEV файлов - показываем полное меню
+  if (/DEV/i.test(currentFileName)) {
+    menu
+      .addSeparator()
       .addItem('1. Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
       .addSeparator()
       .addItem('2. Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
@@ -86,7 +66,8 @@ function onOpen() {
       .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
       .addSeparator()
       .addItem('🔄 Добавить IF к GPT', 'f3');
-  
+  }
+
   menu.addToUi();
 }
 
@@ -539,35 +520,45 @@ function menuDeliverExpanded_Final() {
     const { devId, studentId } = resolveDevStudentByContext_();
     
     const ssDev = SpreadsheetApp.openById(devId);
+    const ssStud = SpreadsheetApp.openById(studentId);
     const shDev = ssDev.getActiveSheet();
     const sheetName = shDev.getName();
     
-    const ssStud = SpreadsheetApp.openById(studentId);
-    
-    // Создаем УНИКАЛЬНОЕ имя для временной вкладки
-    const timestamp = new Date().getTime(); // Используем timestamp для уникальности
+    // Создаем УНИКАЛЬНОЕ имя для временной вкладки в DEV
+    const timestamp = new Date().getTime();
     const tempSheetName = `temp_${timestamp}`;
     
-    // Создаем новую вкладку как копию DEV с временным именем
-    const newSheet = shDev.copyTo(ssStud);
-    newSheet.setName(tempSheetName);
+    // Создаем временную вкладку как копию исходной в DEV
+    const tempSheet = shDev.copyTo(ssDev);
+    tempSheet.setName(tempSheetName);
     
-    // Удаляем формулы из новой вкладки (сохраняя стили)
-    removeFormulasKeepStyles_(newSheet);
-    
-    // Удаляем старую вкладку если она существует
-    const oldSheet = ssStud.getSheetByName(sheetName);
-    if (oldSheet) {
-      ssStud.deleteSheet(oldSheet);
+    try {
+      // Очищаем формулы во временной вкладке
+      removeFormulasKeepStyles_(tempSheet);
+      
+      // Копируем очищенную временную вкладку в STUDENT с временным именем
+      const newSheetInStudent = tempSheet.copyTo(ssStud);
+      const tempSheetNameInStudent = `temp_student_${timestamp}`;
+      newSheetInStudent.setName(tempSheetNameInStudent);
+      
+      // Теперь удаляем старую вкладку в STUDENT если существует
+      const oldSheet = ssStud.getSheetByName(sheetName);
+      if (oldSheet) {
+        ssStud.deleteSheet(oldSheet);
+      }
+      
+      // Переименовываем новую вкладку в оригинальное имя
+      newSheetInStudent.setName(sheetName);
+      
+      // Активируем новый лист в STUDENT
+      ssStud.setActiveSheet(newSheetInStudent);
+      
+      SpreadsheetApp.getUi().alert(`✅ STUDENT обновлен: вкладка "${sheetName}" заменена на версию без формул`);
+      
+    } finally {
+      // Всегда удаляем временную вкладку из DEV
+      ssDev.deleteSheet(tempSheet);
     }
-    
-    // Переименовываем новую вкладку в оригинальное имя
-    newSheet.setName(sheetName);
-    
-    // Активируем новую вкладку
-    ssStud.setActiveSheet(newSheet);
-
-    SpreadsheetApp.getUi().alert(`✅ STUDENT обновлен: вкладка "${sheetName}" заменена на версию без формул`);
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка при синхронизации DEV → STUDENT: ' + (e.message || e));
