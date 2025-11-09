@@ -65,7 +65,9 @@ function onOpen() {
       .addSeparator()
       .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
       .addSeparator()
-      .addItem('🔄 Добавить IF к GPT', 'f3');
+      .addItem('🔄 Добавить IF к GPT', 'f3')
+      .addSeparator()
+      .addItem('🔍 Проверить ERROR ячейки', 'f5'); 
   }
 
   menu.addToUi();
@@ -239,6 +241,67 @@ function f1() {
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка при переносе EFG в E: ' + (e.message || e));
+  }
+}
+
+function f5() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const dataRange = sheet.getDataRange();
+  const values = dataRange.getValues();
+  const formulas = dataRange.getFormulas();
+  
+  let errorCells = [];
+  
+  // Проверяем каждую ячейку в диапазоне данных
+  for (let row = 0; row < values.length; row++) {
+    for (let col = 0; col < values[row].length; col++) {
+      const value = values[row][col];
+      
+      // Проверяем на ошибки Google Sheets
+      if (value === '#ERROR!' || value === '#N/A' || value === '#VALUE!' || 
+          value === '#REF!' || value === '#DIV/0!' || value === '#NUM!' || 
+          value === '#NAME?' || value === '#NULL!') {
+        
+        const cellNotation = `${String.fromCharCode(65 + col)}${row + 1}`;
+        const formula = formulas[row][col] || 'нет формулы';
+        
+        errorCells.push({
+          cell: cellNotation,
+          row: row + 1,
+          column: col + 1,
+          error: value,
+          formula: formula
+        });
+      }
+    }
+  }
+  
+  // Формируем сообщение для пользователя
+  if (errorCells.length === 0) {
+    SpreadsheetApp.getUi().alert('✅ Проверка завершена', 'Ошибок не найдено!', SpreadsheetApp.getUi().ButtonSet.OK);
+  } else {
+    let message = `Найдено ${errorCells.length} ячеек с ошибками:\n\n`;
+    
+    errorCells.forEach((error, index) => {
+      message += `${index + 1}. Ячейка ${error.cell} (строка ${error.row}, колонка ${error.column})\n`;
+      message += `   Ошибка: ${error.error}\n`;
+      message += `   Формула: ${error.formula}\n\n`;
+    });
+    
+    message += 'Хотите выделить эти ячейки?';
+    
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.alert('🔍 Найдены ошибки', message, ui.ButtonSet.YES_NO);
+    
+    if (response === ui.YES) {
+      // Выделяем ячейки с ошибками
+      errorCells.forEach(error => {
+        const cell = sheet.getRange(error.row, error.column);
+        cell.setBackground('#ffcccc'); // Красный фон для ошибок
+      });
+      
+      ui.alert('✅ Выделено', `Ячейки с ошибками выделены красным цветом.`, ui.ButtonSet.OK);
+    }
   }
 }
 
