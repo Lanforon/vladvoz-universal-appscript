@@ -587,24 +587,27 @@ function menuDeliverExpanded_Final() {
     const shDev = ssDev.getActiveSheet();
     const sheetName = shDev.getName();
     
-    // Создаем УНИКАЛЬНОЕ имя для временной вкладки в DEV
+    // Шаг 1: Обрабатываем исходную вкладку в DEV - заменяем формулы значениями
+    processFormulasInPlace_(shDev);
+    
+    // Шаг 2: Создаем УНИКАЛЬНОЕ имя для временной вкладки в DEV
     const timestamp = new Date().getTime();
     const tempSheetName = `temp_${timestamp}`;
     
-    // Создаем временную вкладку как копию исходной в DEV
+    // Создаем временную вкладку как копию исходной в DEV (уже без "плохих" формул)
     const tempSheet = shDev.copyTo(ssDev);
     tempSheet.setName(tempSheetName);
     
     try {
-      // Очищаем формулы во временной вкладке
+      // Шаг 3: Очищаем ВСЕ оставшиеся формулы во временной вкладке
       removeFormulasKeepStyles_(tempSheet);
       
-      // Копируем очищенную временную вкладку в STUDENT с временным именем
+      // Шаг 4: Копируем полностью очищенную временную вкладку в STUDENT
       const newSheetInStudent = tempSheet.copyTo(ssStud);
       const tempSheetNameInStudent = `temp_student_${timestamp}`;
       newSheetInStudent.setName(tempSheetNameInStudent);
       
-      // Теперь удаляем старую вкладку в STUDENT если существует
+      // Удаляем старую вкладку в STUDENT если существует
       const oldSheet = ssStud.getSheetByName(sheetName);
       if (oldSheet) {
         ssStud.deleteSheet(oldSheet);
@@ -625,6 +628,43 @@ function menuDeliverExpanded_Final() {
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка при синхронизации DEV → STUDENT: ' + (e.message || e));
+  }
+}
+
+function processFormulasInPlace_(sheet) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  
+  if (lastRow < 1 || lastCol < 1) return;
+  
+  const range = sheet.getRange(1, 1, lastRow, lastCol);
+  const formulas = range.getFormulas();
+  const values = range.getValues();
+  
+  let hasChanges = false;
+  
+  // Проходим по каждой ячейке и заменяем формулы на их значения (кроме ошибочных)
+  for (let r = 0; r < lastRow; r++) {
+    for (let c = 0; c < lastCol; c++) {
+      const formula = formulas[r][c];
+      
+      // Если есть формула - проверяем результат
+      if (formula && formula.startsWith('=')) {
+        const value = values[r][c];
+        
+        // Если значение НЕ содержит ошибку - заменяем формулу значением
+        if (!isErrorValue_(value)) {
+          values[r][c] = value; // Заменяем формулу вычисленным значением
+          hasChanges = true;
+        }
+        // Если ошибка - оставляем формулу как есть
+      }
+    }
+  }
+  
+  // Применяем изменения только если есть что менять
+  if (hasChanges) {
+    range.setValues(values);
   }
 }
 
@@ -909,26 +949,26 @@ function removeFormulasKeepStyles_(sheet) {
   const formulas = range.getFormulas();
   const values = range.getValues();
   
-  // Проходим по каждой ячейке и заменяем формулы на их значения
+  let hasFormulas = false;
+  
+  // Проходим по каждой ячейке и заменяем ВСЕ формулы на их значения
   for (let r = 0; r < lastRow; r++) {
     for (let c = 0; c < lastCol; c++) {
-      const formula = formulas[r][c];
-      
-      // Если есть формула - проверяем результат
-      if (formula && formula.startsWith('=')) {
-        const value = values[r][c];
-        
-        // Если значение содержит ошибку - очищаем ячейку
-        if (isErrorValue_(value)) {
+      if (formulas[r][c] && formulas[r][c].startsWith('=')) {
+        // Для ошибочных формул очищаем значение, для остальных оставляем вычисленное значение
+        if (isErrorValue_(values[r][c])) {
           values[r][c] = ''; // Очищаем ошибку
         }
-        // Если нет ошибки - оставляем вычисленное значение как есть
+        // Для не-ошибочных формул values[r][c] уже содержит вычисленное значение
+        hasFormulas = true;
       }
-      // Если нет формулы - значение остается без изменений
     }
   }
   
-  range.setValues(values);
+  // Применяем изменения только если есть формулы
+  if (hasFormulas) {
+    range.setValues(values);
+  }
 }
 
 function isErrorValue_(value) {
