@@ -34,14 +34,20 @@ const MARK_SELECT = '>';
 
 
 
-function onOpen() {
 
+
+
+
+
+
+
+function onOpen() {
   const currentFile = SpreadsheetApp.getActive();
   const currentFileName = currentFile.getName();
   
   const menu = SpreadsheetApp.getUi().createMenu('Утилиты');
   
-  // Для БАЗА файлов - показываем только создание DEV
+  // Для таблицы БАЗА
   if (/БАЗА/i.test(currentFileName)) {
     menu
       .addSeparator()
@@ -51,7 +57,7 @@ function onOpen() {
       .addSeparator();
   }
   
-  // Для DEV файлов - показываем полное меню
+  // Для таблиц DEV 
   if (/DEV/i.test(currentFileName)) {
     menu
       .addSeparator()
@@ -71,6 +77,58 @@ function onOpen() {
   }
 
   menu.addToUi();
+}
+
+// Обработчик для запрета удаления строк и столбцов в STUDENT файлах
+function onChange(e) {
+  try {
+    const source = e.source;
+    const currentFileName = source.getName();
+    
+    // Проверяем, является ли файл STUDENT файлом
+    if (/STUDENT/i.test(currentFileName)) {
+      const changeType = e.changeType;
+      
+      // Проверяем тип изменения - удаление строк или столбцов
+      if (changeType === 'REMOVE_ROW' || changeType === 'REMOVE_COLUMN') {
+        // Показываем сообщение пользователю
+        SpreadsheetApp.getUi().alert(
+          '❌ Запрещено удалять!', 
+          'В файлах STUDENT запрещено удалять строки и столбцы!\n\nМожно:\n• Редактировать содержимое ячеек\n• Добавлять новые строки/столбцы\n• Изменять форматирование\n\nЗапрещено:\n• Удалять строки\n• Удалять столбцы', 
+          SpreadsheetApp.getUi().ButtonSet.OK
+        );
+        
+        // Предлагаем отменить действие
+        const ui = SpreadsheetApp.getUi();
+        const response = ui.alert(
+          'Восстановить структуру?',
+          'Рекомендуется немедленно отменить удаление (Ctrl+Z).\nХотите показать инструкцию?',
+          ui.ButtonSet.YES_NO
+        );
+        
+        if (response === ui.Button.YES) {
+          showUndoInstructions();
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Ошибка в onChange:', error);
+  }
+}
+
+function showUndoInstructions() {
+  const message = 
+    '📋 Инструкция по отмене удаления:\n\n' +
+    'Windows:\n• Нажмите Ctrl + Z\n\n' +
+    'Mac:\n• Нажмите Cmd + Z\n\n' +
+    'Или через меню:\n• Правка → Отменить\n\n' +
+    'Это восстановит удаленные строки/столбцы.';
+  
+  SpreadsheetApp.getUi().alert('↩️ Как отменить удаление', message, SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function onEdit(e) {
+
 }
 
 function menuExpandSurgically_Final() {
@@ -97,7 +155,7 @@ function menuExpandSurgically_Final() {
     for (let r = 0; r < aValues.length; r++) {
       const aValue = String(aValues[r][0] || '').trim();
       // Ищем строки с маркером ">" в колонке A и пропускаем сгруппированные
-      if (aValue.includes('>') && !isRowGrouped_(shStud, r + 1)) {
+      if (aValue.includes(MARK_SELECT) && !isRowGrouped_(shStud, r + 1)) {
         rowsWithMarker.push(r + 1);
       }
     }
@@ -134,13 +192,10 @@ function menuExpandSurgically_Final() {
       if (maxItems > 1) {
         console.log(`Раскрываем строку ${row} на ${maxItems} элементов`);
         
-        // Вставляем дополнительные строки ТОЛЬКО В DEV
         shDev.insertRowsAfter(row, maxItems - 1);
         
-        // Копируем форматирование ТОЛЬКО В DEV
         copyRowFormat_(shDev, row, row + 1, maxItems - 1);
         
-        // --- ДУБЛИРОВАНИЕ ФОРМУЛ ИЗ DEV ---
         // Получаем формулы из исходной строки DEV
         const sourceDevFormulas = shDev.getRange(row, 1, 1, shDev.getLastColumn()).getFormulas()[0];
         
@@ -153,7 +208,7 @@ function menuExpandSurgically_Final() {
           targetRange.setFormulas([formulasToSet]);
         }
         
-        // --- СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ СТОЛБЦОВ E-H В DEV ---
+        // --- СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ СТОЛБЦОВ E-H В DEV --
         // Получаем формулы шаблона из столбцов E-H исходной строки
         const templateFormulasEFGH = shDev.getRange(row, COL_E, 1, 4).getFormulas()[0];
         const newBlockFormulasEFGH = [];
@@ -168,7 +223,6 @@ function menuExpandSurgically_Final() {
         
         // Устанавливаем формулы для столбцов E-H во всех строках блока
         shDev.getRange(row, COL_E, maxItems, 4).setFormulas(newBlockFormulasEFGH);
-        // --- КОНЕЦ ОБРАБОТКИ ФОРМУЛ ---
         
         // Заполняем данные ТОЛЬКО В DEV (только в столбцы A-D, чтобы не перезаписать формулы)
         for (let i = 0; i < maxItems; i++) {
@@ -210,11 +264,11 @@ function f1() {
       return;
     }
 
-    // Получаем только EFG данные из STUDENT
-    const studValues = shStud.getRange(1, 5, lastRow, 3).getValues(); // E, F, G
-    const studFormulas = shStud.getRange(1, 5, lastRow, 3).getFormulas(); // E, F, G
+    // Получаем только EFG из STUDENT
+    const studValues = shStud.getRange(1, 5, lastRow, 3).getValues(); 
+    const studFormulas = shStud.getRange(1, 5, lastRow, 3).getFormulas(); 
     
-    // 1. Создаем массив для объединенного значения в E (затираем формулы)
+    //  Создаем массив для объединенного значения в E (затираем формулы)
     const devValuesE = studValues.map((row, rowIndex) => {
       // Объединяем значения E+F+G в одну строку (без формул)
       const combinedValue = row
@@ -225,15 +279,15 @@ function f1() {
       return [combinedValue]; // Возвращаем массив с одним элементом для столбца E
     });
 
-    // 2. Создаем массивы для затирания формул в E, F, G
+    // Создаем массивы для затирания формул в E, F, G
     const emptyValuesE = devValuesE; // E уже содержит значения без формул
     const emptyValuesF = Array(lastRow).fill().map(() => ['']); // Пустые значения для F
     const emptyValuesG = Array(lastRow).fill().map(() => ['']); // Пустые значения для G
 
-    // 3. Записываем значения в E DEV (затираем формулы)
+    //  Записываем значения в E DEV (затираем формулы)
     shDev.getRange(1, 5, lastRow, 1).setValues(emptyValuesE);
     
-    // 4. Затираем формулы в столбцах F и G DEV пустыми значениями
+    //  Затираем формулы в столбцах F и G DEV пустыми значениями
     shDev.getRange(1, 6, lastRow, 1).setValues(emptyValuesF);
     shDev.getRange(1, 7, lastRow, 1).setValues(emptyValuesG);
 
@@ -458,7 +512,6 @@ function menuDeliverToStudent_AutoContext() {
       sheet.getRange(row, COLS.studentUrl).setValue(studUrl);
       SpreadsheetApp.flush(); // Принудительно сохраняем изменения
       
-      // --- ДОБАВЛЕНО: АВТОМАТИЧЕСКИ ОТДАЕМ BCD ПРИ СОЗДАНИИ STUDENT ---
       SpreadsheetApp.getUi().alert('🔄 Автоматически копирую данные BCD из DEV в STUDENT...');
       
       const ssDev = SpreadsheetApp.openById(currentFileId);
@@ -504,7 +557,6 @@ function menuDeliverToStudent_AutoContext() {
 
         console.log(`Автоматически скопировано ${copiedCount} ячеек BCD при создании STUDENT`);
       }
-      // --- КОНЕЦ ДОБАВЛЕННОГО КОДА ---
     }
     
     const finalStudUrl = `https://docs.google.com/spreadsheets/d/${studId}/edit`;
@@ -622,7 +674,6 @@ function menuDeliverExpanded_Final() {
       SpreadsheetApp.getUi().alert(`✅ STUDENT обновлен: вкладка "${sheetName}" заменена на версию без формул`);
       
     } finally {
-      // Всегда удаляем временную вкладку из DEV
       ssDev.deleteSheet(tempSheet);
     }
 
@@ -643,26 +694,20 @@ function processFormulasInPlace_(sheet) {
   
   let hasChanges = false;
   
-  // Проходим по каждой ячейке и заменяем формулы на их значения (кроме ошибочных)
   for (let r = 0; r < lastRow; r++) {
     for (let c = 0; c < lastCol; c++) {
       const formula = formulas[r][c];
       
-      // Если есть формула - проверяем результат
       if (formula && formula.startsWith('=')) {
         const value = values[r][c];
         
-        // Если значение НЕ содержит ошибку - заменяем формулу значением
         if (!isErrorValue_(value)) {
-          values[r][c] = value; // Заменяем формулу вычисленным значением
+          values[r][c] = value;
           hasChanges = true;
         }
-        // Если ошибка - оставляем формулу как есть
       }
     }
   }
-  
-  // Применяем изменения только если есть что менять
   if (hasChanges) {
     range.setValues(values);
   }
@@ -685,7 +730,6 @@ function pasteSelectedValues_Bidirectional() {
       return;
     }
 
-    // Собираем данные из STUDENT (только несгруппированные строки)
     const dataToCopy = [];
 
     for (let r = 1; r <= lastRow; r++) {
@@ -801,7 +845,6 @@ function parseNumberedListEnhanced_(text) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
 
-    // Расширенный поиск нумерованных пунктов:
     // 1. "1. текст", "2. текст"
     const matchDot = trimmedLine.match(/^\s*(\d{1,2})\.\s*(.+)$/);
     // 2. "1) текст", "2) текст"  
@@ -947,27 +990,14 @@ function removeFormulasKeepStyles_(sheet) {
   
   const range = sheet.getRange(1, 1, lastRow, lastCol);
   const formulas = range.getFormulas();
-  const values = range.getValues();
   
-  let hasFormulas = false;
-  
-  // Проходим по каждой ячейке и заменяем ВСЕ формулы на их значения
-  for (let r = 0; r < lastRow; r++) {
-    for (let c = 0; c < lastCol; c++) {
+  for (let r = 0; r < formulas.length; r++) {
+    for (let c = 0; c < formulas[r].length; c++) {
       if (formulas[r][c] && formulas[r][c].startsWith('=')) {
-        // Для ошибочных формул очищаем значение, для остальных оставляем вычисленное значение
-        if (isErrorValue_(values[r][c])) {
-          values[r][c] = ''; // Очищаем ошибку
-        }
-        // Для не-ошибочных формул values[r][c] уже содержит вычисленное значение
-        hasFormulas = true;
+        const cell = sheet.getRange(r + 1, c + 1);
+        cell.clearContent(); 
       }
     }
-  }
-  
-  // Применяем изменения только если есть формулы
-  if (hasFormulas) {
-    range.setValues(values);
   }
 }
 
