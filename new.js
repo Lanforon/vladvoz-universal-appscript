@@ -5,6 +5,7 @@ const ALLOWED_EMAILS = ['work@vladvoz.com']; // ИЗМЕНИТЕ НА ДЕЙСТ
 const REGISTRY_FILE_ID = '1TEksg-gFc5rgPAcgUC7aOrVsJKhCrw4-UPUTSqxVaF8'; 
 const REG_SHEET = 'REGISTRY';
 const START_ROW = 2; // для реестра
+const NameMainTable = "БАЗА"
 
 const TARGET_FOLDER_ID = '14mUE3P63c79GqMHgWDy4GrKkcf13Ut7c'; // TOO 
 
@@ -12,6 +13,7 @@ const TARGET_FOLDER_ID = '14mUE3P63c79GqMHgWDy4GrKkcf13Ut7c'; // TOO
 const REG_MASTER_FACTORY_CELL = 'B1';
 const REG_MASTER_NOFACT_CELL  = 'D1';
 const REG_STYLE_MASTER_CELL   = 'F1';
+
 
 // ИСПРАВЛЕНО: Новая структура колонок
 const COLS = {
@@ -21,15 +23,28 @@ const COLS = {
   devUrl: 4,     // D - Ссылка DEV
   studentUrl: 5, // E - Ссылка STUDENT
   devMode: 6,    // F - Статус ('Фабрика' / 'Не Фабрика')
-  aud1: 7,       // G - Аудитория 1
-  exp1: 8,       // H - Эксперт 1
-  aud2: 9,       // I - Аудитория 2
-  exp2: 10,      // J - Эксперт 2
-  aud3: 11,      // K - Аудитория 3
-  exp3: 12       // L - Эксперт 3
+  expert: 7,     // G - Эксперт → B2/C2/D2/E2/F2/G2
+  aud1: 8,       // H - Аудитория 1 → B1
+  aud2: 9,       // I - Аудитория 2 → C1  
+  aud3: 10,      // J - Аудитория 3 → D1
+  aud4: 11,      // K - Аудитория 4 → E2
+  aud5: 12,      // L - Аудитория 5 → F2
+  aud6: 13,      // M - Аудитория 6 → G2
+  expertProgram: 14 // N - Программа эксперта (уходит в B4)
 };
 
 const COL_A = 1, COL_B = 2, COL_C = 3, COL_D = 4, COL_E = 5, COL_F = 6, COL_G = 7, COL_H = 8;
+
+// КОНСТАНТЫ ДЛЯ ЦЕЛЕВЫХ ЯЧЕЕК В DEV
+const DEV_AUD1_CELL = 'B1'; // Аудитория 1
+const DEV_AUD2_CELL = 'C1'; // Аудитория 2  
+const DEV_AUD3_CELL = 'D1'; // Аудитория 3
+const DEV_AUD4_CELL = 'E2'; // Аудитория 4
+const DEV_AUD5_CELL = 'F2'; // Аудитория 5
+const DEV_AUD6_CELL = 'G2'; // Аудитория 6
+const DEV_EXPERT_CELL_BASE = 'B2'; // Базовая ячейка для эксперта
+const DEV_EXPERT_PROGRAM_CELL = 'B4'; // Программа эксперта
+
 const MARK_SELECT = '>';
 
 
@@ -45,7 +60,7 @@ function onOpen() {
   const currentFile = SpreadsheetApp.getActive();
   const currentFileName = currentFile.getName();
   
-  const menu = SpreadsheetApp.getUi().createMenu('Утилиты');
+  const menu = SpreadsheetApp.getUi().createMenu('Технический');
   
   // Для таблицы БАЗА
   if (/БАЗА/i.test(currentFileName)) {
@@ -60,19 +75,17 @@ function onOpen() {
   // Для таблиц DEV 
   if (/DEV/i.test(currentFileName)) {
     menu
+      .addItem('Создать STUDENT — для ученика', 'menuDeliverToStudent_AutoContext')
       .addSeparator()
-      .addItem('1. Создать STUDENT - для ученика', 'menuDeliverToStudent_AutoContext')
+      .addItem('ШАГ 1-4 — Отдать BCD [DEV > STUD] ', 'f2')
+      .addItem('ШАГ 1-4 — Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
+      .addItem('ШАГ 5 — Раскрыть > строки [в DEV]', 'menuExpandSurgically_Final') 
+      .addItem('ШАГ 5 — Отдать ВКЛАДКУ [DEV > STUD]', 'menuDeliverExpanded_Final')
       .addSeparator()
-      .addItem('2. Забрать BCD [STUD > DEV]', 'pasteSelectedValues_Bidirectional')
-      .addItem('2. Отдать BCD [DEV > STUD] ', 'f2')
-      .addSeparator()
-      .addItem('3. Раскрыть > в DEV', 'menuExpandSurgically_Final') 
-      .addItem('3. Отдать ВКЛАДКУ [DEV > STUD]', 'menuDeliverExpanded_Final')
-      .addSeparator()
-      .addItem('4. Забрать EFG [STUD > DEV] → Сместить в E', 'f1')
+      .addItem('ШАГ 6 — Забрать EFG [STUD > DEV] → в Е', 'f1')
+      .addItem('ШАГ 6 — Отдать ВКЛАДКУ [DEV > STUD] → в Е', 'f1')
       .addSeparator()
       .addItem('🔄 Добавить IF к GPT', 'f3')
-      .addSeparator()
       .addItem('🔍 Проверить ERROR ячейки', 'f5'); 
   }
 
@@ -302,7 +315,6 @@ function f5() {
   const sheet = SpreadsheetApp.getActiveSheet();
   const dataRange = sheet.getDataRange();
   const values = dataRange.getValues();
-  const formulas = dataRange.getFormulas();
   
   let errorCells = [];
   
@@ -317,45 +329,17 @@ function f5() {
           value === '#NAME?' || value === '#NULL!') {
         
         const cellNotation = `${String.fromCharCode(65 + col)}${row + 1}`;
-        const formula = formulas[row][col] || 'нет формулы';
-        
-        errorCells.push({
-          cell: cellNotation,
-          row: row + 1,
-          column: col + 1,
-          error: value,
-          formula: formula
-        });
+        errorCells.push(cellNotation);
       }
     }
   }
   
   // Формируем сообщение для пользователя
   if (errorCells.length === 0) {
-    SpreadsheetApp.getUi().alert('✅ Проверка завершена', 'Ошибок не найдено!', SpreadsheetApp.getUi().ButtonSet.OK);
+    SpreadsheetApp.getUi().alert('✅ Ошибок нет');
   } else {
-    let message = `Найдено ${errorCells.length} ячеек с ошибками:\n\n`;
-    
-    errorCells.forEach((error, index) => {
-      message += `${index + 1}. Ячейка ${error.cell} (строка ${error.row}, колонка ${error.column})\n`;
-      message += `   Ошибка: ${error.error}\n`;
-      message += `   Формула: ${error.formula}\n\n`;
-    });
-    
-    message += 'Хотите выделить эти ячейки?';
-    
-    const ui = SpreadsheetApp.getUi();
-    const response = ui.alert('🔍 Найдены ошибки', message, ui.ButtonSet.YES_NO);
-    
-    if (response === ui.YES) {
-      // Выделяем ячейки с ошибками
-      errorCells.forEach(error => {
-        const cell = sheet.getRange(error.row, error.column);
-        cell.setBackground('#ffcccc'); // Красный фон для ошибок
-      });
-      
-      ui.alert('✅ Выделено', `Ячейки с ошибками выделены красным цветом.`, ui.ButtonSet.OK);
-    }
+    const message = `ОШИБКИ: ${errorCells.join(' ')}`;
+    SpreadsheetApp.getUi().alert(message);
   }
 }
 
@@ -367,6 +351,14 @@ function f2() {
     const ssDev = SpreadsheetApp.openById(devId);
     const shDev = ssDev.getActiveSheet();
     const sheetName = shDev.getName();
+    
+    // Извлекаем ID из имени DEV файла
+    const devFileName = ssDev.getName();
+    const idMatch = devFileName.match(/DEV\s—\s(\d+)/);
+    if (!idMatch) {
+      throw new Error('Не удалось извлечь ID из имени DEV файла. Формат: "DEV — 111"');
+    }
+    const devIdNumber = idMatch[1];
     
     const ssStud = SpreadsheetApp.openById(studentId);
     const shStud = ssStud.getSheetByName(sheetName) || ssStud.insertSheet(sheetName);
@@ -414,7 +406,9 @@ function f2() {
       return;
     }
 
-    SpreadsheetApp.getUi().alert(`✅ Отдано ${copiedCount} ячеек B-C-D ученику (только непустые значения)`);
+    updateDatabaseWithDeliveryInfo_(devIdNumber);
+
+    SpreadsheetApp.getUi().alert(`✅ Отдано ${copiedCount} ячеек B-C-D ученику (только непустые значения)\n\nID ${devIdNumber} записан в базу`);
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка при отправке BCD ученику: ' + (e.message || e));
@@ -480,8 +474,6 @@ function menuDeliverToStudent_AutoContext() {
     }
     
     if (!studId) {
-      SpreadsheetApp.getUi().alert('🔄 Начинаю создание STUDENT файла из текущего DEV...');
-
       const currentFile = SpreadsheetApp.getActive();
       const currentFileId = currentFile.getId();
       const currentFileName = currentFile.getName();
@@ -511,8 +503,6 @@ function menuDeliverToStudent_AutoContext() {
       // Обновляем данные в реестре
       sheet.getRange(row, COLS.studentUrl).setValue(studUrl);
       SpreadsheetApp.flush(); // Принудительно сохраняем изменения
-      
-      SpreadsheetApp.getUi().alert('🔄 Автоматически копирую данные BCD из DEV в STUDENT...');
       
       const ssDev = SpreadsheetApp.openById(currentFileId);
       const shDev = ssDev.getActiveSheet();
@@ -582,12 +572,18 @@ function removeFormulasFromStudent_(studentId) {
       const formulas = range.getFormulas();
       const values = range.getValues();
       
-      // Проходим по каждой ячейке и очищаем только те, где есть формулы
       for (let r = 0; r < formulas.length; r++) {
         for (let c = 0; c < formulas[r].length; c++) {
           const formula = formulas[r][c];
-          // Если есть формула (начинается с =) - очищаем только эту ячейку
-          if (formula && formula.startsWith('=')) {
+          
+          // Проверяем, нужно ли сохранить эту ячейку
+          const shouldPreserve = 
+            // Не стирать C8 и D8
+            (r + 1 === 8 && (c + 1 === 3 || c + 1 === 4)) ||
+            // Не стирать EFG с 1 по 14 строку
+            (r + 1 >= 1 && r + 1 <= 14 && c + 1 >= 5 && c + 1 <= 7);
+          
+          if (formula && formula.startsWith('=') && !shouldPreserve) {
             const cell = sh.getRange(r + 1, c + 1);
             cell.clearContent(); // Очищаем содержимое, сохраняя форматирование
           }
@@ -608,26 +604,54 @@ function createDevOnly_AutoContext_(mode) {
   const order = String(sheet.getRange(row, COLS.order).getValue() || '').trim();
   if (!order) throw new Error('В колонке B (ID заказа) пусто.');
 
-  const a1 = sheet.getRange(row, COLS.aud1).getValue() || '';
-  const e1 = sheet.getRange(row, COLS.exp1).getValue() || '';
-  const a2 = sheet.getRange(row, COLS.aud2).getValue() || '';
-  const e2 = sheet.getRange(row, COLS.exp2).getValue() || '';
-  const a3 = sheet.getRange(row, COLS.aud3).getValue() || '';
-  const e3 = sheet.getRange(row, COLS.exp3).getValue() || '';
+  const expert = sheet.getRange(row, COLS.expert).getValue() || '';
+  const aud1 = sheet.getRange(row, COLS.aud1).getValue() || '';
+  const aud2 = sheet.getRange(row, COLS.aud2).getValue() || '';
+  const aud3 = sheet.getRange(row, COLS.aud3).getValue() || '';
+  const aud4 = sheet.getRange(row, COLS.aud4).getValue() || '';
+  const aud5 = sheet.getRange(row, COLS.aud5).getValue() || '';
+  const aud6 = sheet.getRange(row, COLS.aud6).getValue() || '';
+  const expertProgram = sheet.getRange(row, COLS.expertProgram).getValue() || '';
+
+  console.log('Создание DEV с данными:', {
+    expert, aud1, aud2, aud3, aud4, aud5, aud6, expertProgram
+  });
 
   const folder = DriveApp.getFolderById(TARGET_FOLDER_ID);
   const devFile = DriveApp.getFileById(masterId).makeCopy(`DEV — ${order}`, folder);
-  const devId    = devFile.getId();
+  const devId = devFile.getId();
 
-  applyAudienceExpert_(devId, {aud:[a1,a2,a3], exp:[e1,e2,e3]});
-  clearAudienceColumnsIfMissing_(devId, {aud2:a2, aud3:a3});
+  applyAudienceExpert_(devId, {
+    expert: expert,
+    aud1: aud1,
+    aud2: aud2, 
+    aud3: aud3,
+    aud4: aud4,
+    aud5: aud5,
+    aud6: aud6,
+    expertProgram: expertProgram
+  });
+  
+  // Очищаем только старые незаполненные аудитории
+  clearAudienceColumnsIfMissing_(devId, {
+    aud2: aud2,
+    aud3: aud3
+  });
   
   sheet.getRange(row, COLS.devUrl).setValue(`https://docs.google.com/spreadsheets/d/${devId}/edit`);
   
-  const displayMode = mode === 'factory' ? 'Фабрика' : 'Не Фабрика';
+  const displayMode = mode === 'factory' ? 'Отправить STUDENT' : 'Не Фабрика';
   sheet.getRange(row, COLS.devMode).setValue(displayMode);
 
-  showLink_('Перейди в DEV и дай отработать GPT.', `https://docs.google.com/spreadsheets/d/${devId}/edit`, 'ПЕРЕЙТИ В DEV');
+  // ФИНАЛЬНАЯ ПРОВЕРКА
+  const ssDev = SpreadsheetApp.openById(devId);
+  const shDev = ssDev.getSheets()[0];
+  
+
+  const resultMessage = 
+    "DEV создан!";
+
+  showLink_(resultMessage, `https://docs.google.com/spreadsheets/d/${devId}/edit`, 'ПЕРЕЙТИ В DEV');
 }
 
 function menuDeliverExpanded_Final() {
@@ -639,10 +663,18 @@ function menuDeliverExpanded_Final() {
     const shDev = ssDev.getActiveSheet();
     const sheetName = shDev.getName();
     
-    // Шаг 1: Обрабатываем исходную вкладку в DEV - заменяем формулы значениями
+    // Шаг 1: Извлекаем ID из имени DEV файла
+    const devFileName = ssDev.getName();
+    const idMatch = devFileName.match(/DEV\s—\s(\d+)/);
+    if (!idMatch) {
+      throw new Error('Не удалось извлечь ID из имени DEV файла. Формат: "DEV — 111"');
+    }
+    const devIdNumber = idMatch[1];
+    
+    // Шаг 2: Обрабатываем исходную вкладку в DEV - заменяем формулы значениями
     processFormulasInPlace_(shDev);
     
-    // Шаг 2: Создаем УНИКАЛЬНОЕ имя для временной вкладки в DEV
+    // Шаг 3: Создаем УНИКАЛЬНОЕ имя для временной вкладки в DEV
     const timestamp = new Date().getTime();
     const tempSheetName = `temp_${timestamp}`;
     
@@ -651,10 +683,10 @@ function menuDeliverExpanded_Final() {
     tempSheet.setName(tempSheetName);
     
     try {
-      // Шаг 3: Очищаем ВСЕ оставшиеся формулы во временной вкладке
+      // Шаг 4: Очищаем ВСЕ оставшиеся формулы во временной вкладке
       removeFormulasKeepStyles_(tempSheet);
       
-      // Шаг 4: Копируем полностью очищенную временную вкладку в STUDENT
+      // Шаг 5: Копируем полностью очищенную временную вкладку в STUDENT
       const newSheetInStudent = tempSheet.copyTo(ssStud);
       const tempSheetNameInStudent = `temp_student_${timestamp}`;
       newSheetInStudent.setName(tempSheetNameInStudent);
@@ -671,7 +703,10 @@ function menuDeliverExpanded_Final() {
       // Активируем новый лист в STUDENT
       ssStud.setActiveSheet(newSheetInStudent);
       
-      SpreadsheetApp.getUi().alert(`✅ STUDENT обновлен: вкладка "${sheetName}" заменена на версию без формул`);
+      // Шаг 6: Записываем информацию в базу
+      updateDatabaseWithDeliveryInfo_(devIdNumber);
+      
+      SpreadsheetApp.getUi().alert(`✅ STUDENT обновлен: вкладка "${sheetName}" заменена на версию без формул\n\nID ${devIdNumber} записан в базу`);
       
     } finally {
       ssDev.deleteSheet(tempSheet);
@@ -679,6 +714,47 @@ function menuDeliverExpanded_Final() {
 
   } catch (e) {
     SpreadsheetApp.getUi().alert('Ошибка при синхронизации DEV → STUDENT: ' + (e.message || e));
+  }
+}
+
+function updateDatabaseWithDeliveryInfo_(devIdNumber) {
+  try {
+    const files = DriveApp.getFilesByName(NameMainTable);
+    if (!files.hasNext()) {
+      console.log('Таблица "БАЗА" не найдена');
+      return;
+    }
+    
+    const baseFile = files.next();
+    const ssBase = SpreadsheetApp.openById(baseFile.getId());
+    const shBase = ssBase.getSheets()[0]; // Берем первую вкладку
+    
+    const data = shBase.getDataRange().getValues();
+    
+    // Ищем строку с совпадающим ID в столбце B (индекс 1)
+    let targetRow = -1;
+    for (let i = 0; i < data.length; i++) {
+      const rowId = String(data[i][1] || '').trim(); // Столбец B
+      if (rowId === devIdNumber) {
+        targetRow = i + 1; // +1 потому что индексы начинаются с 1 в Google Sheets
+        break;
+      }
+    }
+    
+    if (targetRow === -1) {
+      console.log(`ID ${devIdNumber} не найден в столбце B таблицы "БАЗА"`);
+      return;
+    }
+    
+    // Записываем в столбец F (индекс 5) сообщение
+    const message = "написать Влад сделал";
+    shBase.getRange(targetRow, 6).setValue(message); // Столбец F
+    
+    console.log(`Записано в базу: строка ${targetRow}, столбец F - "${message}"`);
+    
+  } catch (e) {
+    console.error('Ошибка при обновлении базы:', e);
+    throw new Error('Не удалось обновить базу: ' + (e.message || e));
   }
 }
 
@@ -1072,7 +1148,7 @@ function showLink_(text, url, btn) {
   const html = HtmlService.createHtmlOutput(
     `<div style="font:14px/1.4 system-ui,Arial;padding:12px">
        <div style="margin-bottom:10px">${text}</div>
-       <a href="${url}" target="_blank"
+       <a href="${url}" target="_blank" onclick="google.script.host.close()"
           style="display:inline-block;padding:8px 12px;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none;">
          ${btn || 'Перейти'}
        </a>
@@ -1150,20 +1226,103 @@ function ensureRowsAndCols_(sh, minRow, minCol){
   if (maxC < minCol) sh.insertColumnsAfter(maxC, minCol - maxC);
 }
 
-function applyAudienceExpert_(fileId,{aud,exp}){
-  const ss=SpreadsheetApp.openById(fileId);
-  ss.getSheets().forEach(sh=>{
-    try{ sh.getRange('B1:D1').setValues([aud]); }catch(e){}
-    try{ sh.getRange('B2:D2').setValues([exp]); }catch(e){}
+function applyAudienceExpert_(fileId, data) {
+  const ss = SpreadsheetApp.openById(fileId);
+  const sheets = ss.getSheets();
+  
+  sheets.forEach(sh => {
+    try { 
+      console.log('Применяем данные:', data);
+      
+      // === 1. АУДИТОРИИ ===
+      // Аудитории 1-3 в строку 1 (B1, C1, D1)
+      const row1Audiences = [
+        data.aud1 || '',
+        data.aud2 || '', 
+        data.aud3 || ''
+      ];
+      console.log('Аудитории строка 1 (B1:D1):', row1Audiences);
+      sh.getRange('B1:D1').setValues([row1Audiences]);
+      
+      // Аудитории 4-6 в строку 2 (E2, F2, G2) - ВАЖНО: это АУДИТОРИИ, а не эксперт!
+      const row2Audiences = [
+        data.aud4 || '',
+        data.aud5 || '',
+        data.aud6 || ''
+      ];
+      console.log('Аудитории строка 2 (E2:G2):', row2Audiences);
+      sh.getRange('E2:G2').setValues([row2Audiences]);
+      
+      // === 2. ЭКСПЕРТ ===
+      // Эксперт распределяется в строку 3 (B3, C3, D3, E3, F3, G3) для соответствующих аудиторий
+      const expert = data.expert || '';
+      console.log('Эксперт для распределения:', expert);
+      
+      // Определяем для каких аудиторий нужно добавить эксперта
+      const expertColumns = [];
+      
+      if (data.aud1 && data.aud1.toString().trim() !== '') expertColumns.push(2); // B3
+      if (data.aud2 && data.aud2.toString().trim() !== '') expertColumns.push(3); // C3
+      if (data.aud3 && data.aud3.toString().trim() !== '') expertColumns.push(4); // D3
+      if (data.aud4 && data.aud4.toString().trim() !== '') expertColumns.push(5); // E3
+      if (data.aud5 && data.aud5.toString().trim() !== '') expertColumns.push(6); // F3
+      if (data.aud6 && data.aud6.toString().trim() !== '') expertColumns.push(7); // G3
+      
+      console.log('Колонки для эксперта (строка 3):', expertColumns);
+      
+      // Записываем эксперта в строку 3 для заполненных аудиторий
+      expertColumns.forEach(col => {
+        sh.getRange(3, col).setValue(expert);
+        console.log(`Записан эксперт в ячейку ${String.fromCharCode(64 + col)}3`);
+      });
+      
+      // === 3. ПРОГРАММА ЭКСПЕРТА ===
+      if (data.expertProgram) {
+        console.log('Программа эксперта в B4:', data.expertProgram);
+        sh.getRange('B4').setValue(data.expertProgram);
+      }
+      
+      // === ПРОВЕРКА РЕЗУЛЬТАТА ===
+      console.log('=== ФИНАЛЬНЫЙ РЕЗУЛЬТАТ В DEV ===');
+      console.log('СТРОКА 1 (Аудитории):');
+      console.log('B1:', sh.getRange('B1').getValue());
+      console.log('C1:', sh.getRange('C1').getValue());
+      console.log('D1:', sh.getRange('D1').getValue());
+      
+      console.log('СТРОКА 2 (Аудитории 4-6):');
+      console.log('E2:', sh.getRange('E2').getValue());
+      console.log('F2:', sh.getRange('F2').getValue());
+      console.log('G2:', sh.getRange('G2').getValue());
+      
+      console.log('СТРОКА 3 (Эксперт):');
+      console.log('B3:', sh.getRange('B3').getValue());
+      console.log('C3:', sh.getRange('C3').getValue());
+      console.log('D3:', sh.getRange('D3').getValue());
+      console.log('E3:', sh.getRange('E3').getValue());
+      console.log('F3:', sh.getRange('F3').getValue());
+      console.log('G3:', sh.getRange('G3').getValue());
+      
+      console.log('СТРОКА 4 (Программа):');
+      console.log('B4:', sh.getRange('B4').getValue());
+      
+    } catch(e) {
+      console.log('Ошибка при применении данных к листу:', e.message);
+      throw e;
+    }
   });
 }
 
-function clearAudienceColumnsIfMissing_(fileId,{aud2,aud3}){
-  const ss=SpreadsheetApp.openById(fileId);
-  ss.getSheets().forEach(sh=>{
-    const rows = sh.getMaxRows();
-    if(!aud2) sh.getRange(1,COL_C,rows,1).clearContent();
-    if(!aud3) sh.getRange(1,COL_D,rows,1).clearContent();
+function clearAudienceColumnsIfMissing_(fileId, data) {
+  const ss = SpreadsheetApp.openById(fileId);
+  const sheets = ss.getSheets();
+  
+  sheets.forEach(sh => {
+    // Очищаем только старые аудитории (1-3) если не заполнены
+    // Новые аудитории (4-6) не очищаем - они просто остаются пустыми если нет данных
+    if (!data.aud2) sh.getRange('C1').clearContent();
+    if (!data.aud3) sh.getRange('D1').clearContent();
+    
+    console.log('Очистка выполнена для незаполненных аудиторий 1-3');
   });
 }
 
