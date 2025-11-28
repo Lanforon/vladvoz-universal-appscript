@@ -63,7 +63,16 @@ function onOpen() {
   const menu = SpreadsheetApp.getUi().createMenu('Технический');
   
   // Для таблицы БАЗА
-  if (/БАЗА/i.test(currentFileName)) {
+  if (currentFileName === NameMainTable) {
+    menu
+      .addSeparator()
+      .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
+      .addSeparator()
+      .addItem('СОЗДАТЬ DEV - НЕ КЛУБ', 'menuDevelopNoFactory')
+      .addSeparator()
+      .addItem('🔄 ОБНОВИТЬ ИЗ РЕЕСТРА', 'f7')
+      .addSeparator();
+  } else if (/БАЗА/i.test(currentFileName)) {
     menu
       .addSeparator()
       .addItem('СОЗДАТЬ DEV - КЛУБ', 'menuDevelopFactory')
@@ -555,6 +564,111 @@ function menuDeliverToStudent_AutoContext() {
   } catch (e) {
     console.error('Ошибка при создании STUDENT:', e);
     SpreadsheetApp.getUi().alert('Ошибка создания STUDENT: ' + (e.message || e));
+  }
+}
+
+/***** === НОВАЯ ФУНКЦИЯ: ОБНОВИТЬ ИЗ РЕЕСТРА ===*****/
+function f7() {
+  try {
+    const currentFile = SpreadsheetApp.getActive();
+    const currentFileName = currentFile.getName();
+    
+    // Проверяем, что находимся в таблице "БАЗА"
+    if (currentFileName !== NameMainTable) {
+      throw new Error(`Эта функция работает только в таблице "${NameMainTable}"`);
+    }
+    
+    const activeSheet = currentFile.getActiveSheet();
+    const activeRange = currentFile.getActiveRange();
+    
+    if (!activeRange) {
+      throw new Error('Выберите ячейку в столбце D или E');
+    }
+    
+    const activeColumn = activeRange.getColumn();
+    const activeRow = activeRange.getRow();
+    
+    // Проверяем, что активная ячейка в столбце D или E
+    if (activeColumn !== 4 && activeColumn !== 5) { // D=4, E=5
+      throw new Error('Выберите ячейку в столбце D (ссылка DEV) или E (ссылка STUDENT)');
+    }
+    
+    // Получаем URL из активной ячейки
+    const url = activeRange.getValue();
+    if (!url || typeof url !== 'string') {
+      throw new Error('В выбранной ячейке нет ссылки');
+    }
+    
+    // Извлекаем ID файла из URL
+    const targetFileId = fileIdFromUrl_(url);
+    
+    // Получаем MAIN таблицу из B1
+    const mainTableUrl = activeSheet.getRange('B1').getValue();
+    if (!mainTableUrl || typeof mainTableUrl !== 'string') {
+      throw new Error('В ячейке B1 нет ссылки на MAIN таблицу');
+    }
+    
+    const mainFileId = fileIdFromUrl_(mainTableUrl);
+    
+    // Получаем ячейки для копирования из F1
+    const cellsToCopy = activeSheet.getRange('F1').getValue();
+    if (!cellsToCopy || typeof cellsToCopy !== 'string') {
+      throw new Error('В ячейке F1 не указаны ячейки для копирования (формат: "B90, C90")');
+    }
+    
+    // Парсим ячейки из F1
+    const cellReferences = cellsToCopy.split(',').map(cell => cell.trim());
+    if (cellReferences.length === 0) {
+      throw new Error('Не удалось распознать ячейки в F1. Формат: "B90, C90"');
+    }
+    
+    console.log('Копируем ячейки:', cellReferences);
+    
+    // Открываем MAIN таблицу
+    const mainSS = SpreadsheetApp.openById(mainFileId);
+    const mainSheets = mainSS.getSheets();
+    
+    // Открываем целевую таблицу
+    const targetSS = SpreadsheetApp.openById(targetFileId);
+    const targetSheets = targetSS.getSheets();
+    
+    let totalCopied = 0;
+    
+    // Копируем данные из каждой указанной ячейки
+    for (const cellRef of cellReferences) {
+      console.log(`Копируем ячейку ${cellRef}`);
+      
+      // Копируем во все листы целевой таблицы
+      for (let i = 0; i < targetSheets.length; i++) {
+        const targetSheet = targetSheets[i];
+        const mainSheet = mainSheets[i] || mainSheets[0]; // Если листов меньше, берем первый
+        
+        try {
+          // Получаем значение из MAIN таблицы
+          const value = mainSheet.getRange(cellRef).getValue();
+          const formula = mainSheet.getRange(cellRef).getFormula();
+          
+          // Записываем в целевую таблицу
+          if (formula && formula.startsWith('=')) {
+            targetSheet.getRange(cellRef).setFormula(formula);
+          } else {
+            targetSheet.getRange(cellRef).setValue(value);
+          }
+          
+          console.log(`Скопировано в ${targetSheet.getName()}: ${cellRef}`);
+          totalCopied++;
+          
+        } catch (e) {
+          console.log(`Ошибка при копировании ${cellRef} в лист ${targetSheet.getName()}: ${e.message}`);
+        }
+      }
+    }
+    
+    SpreadsheetApp.getUi().alert(`✅ Обновлено ${totalCopied} ячеек из MAIN таблицы в целевую таблицу`);
+    
+  } catch (e) {
+    console.error('Ошибка в updateFromRegistry:', e);
+    SpreadsheetApp.getUi().alert('Ошибка при обновлении из реестра: ' + (e.message || e));
   }
 }
 
