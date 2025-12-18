@@ -1,13 +1,13 @@
 /***** НАСТРОЙКИ ДЛЯ ПОЛЬЗОВАТЕЛЯ *****/
 
-const ALLOWED_EMAILS = ['work@vladvoz.com']; // ИЗМЕНИТЕ НА ДЕЙСТВУЮЩИЙ EMAIL
+const ALLOWED_EMAILS = ['rus.gavrish.98@bk.ru']; // ИЗМЕНИТЕ НА ДЕЙСТВУЮЩИЙ EMAIL
 
-const REGISTRY_FILE_ID = '1TEksg-gFc5rgPAcgUC7aOrVsJKhCrw4-UPUTSqxVaF8'; 
+const REGISTRY_FILE_ID = '1p8sBJylRf5-UuDAkXcxoq60Xwrta_L7EoY4EBb_OO5s'; 
 const REG_SHEET = 'REGISTRY';
 const START_ROW = 2; // для реестра
-const NameMainTable = "БАЗА"
+const NameMainTable = "MAIN"
 
-const TARGET_FOLDER_ID = '14mUE3P63c79GqMHgWDy4GrKkcf13Ut7c'; // TOO 
+const TARGET_FOLDER_ID = '1Zp5-PxFMYFH0eC7PWdr9LgsrYDR6eJEG'; // TOO 
 
 // Ссылки в REGISTRY
 const REG_MASTER_FACTORY_CELL = 'B1';
@@ -1346,84 +1346,174 @@ function applyAudienceExpert_(fileId, data) {
   
   sheets.forEach(sh => {
     try { 
-      console.log('Применяем данные:', data);
+      console.log('Применяем данные с очисткой формул по столбцам:', data);
       
-      // === 1. АУДИТОРИИ ===
-      // Аудитории 1-3 в строку 1 (B1, C1, D1)
-      const row1Audiences = [
-        data.aud1 || '',
-        data.aud2 || '', 
-        data.aud3 || ''
-      ];
-      console.log('Аудитории строка 1 (B1:D1):', row1Audiences);
-      sh.getRange('B1:D1').setValues([row1Audiences]);
+      // === ЗАПОЛНЯЕМ ДАННЫЕ ===
+      // Очищаем только основные ячейки перед заполнением
+      sh.getRange('B1:D1').clearContent(); // Аудитории 1-3
+      sh.getRange('E2:G2').clearContent(); // Аудитории 4-6
+      sh.getRange('B3:G3').clearContent(); // Эксперты
+      sh.getRange('B4').clearContent();    // Программа
       
-      // Аудитории 4-6 в строку 2 (E2, F2, G2) - ВАЖНО: это АУДИТОРИИ, а не эксперт!
-      const row2Audiences = [
-        data.aud4 || '',
-        data.aud5 || '',
-        data.aud6 || ''
-      ];
-      console.log('Аудитории строка 2 (E2:G2):', row2Audiences);
-      sh.getRange('E2:G2').setValues([row2Audiences]);
+      // 1. АУДИТОРИИ В СТРОКЕ 1 (B1, C1, D1)
+      if (data.aud1 && String(data.aud1).trim() !== '') {
+        sh.getRange('B1').setValue(data.aud1);
+        console.log('✓ Аудитория 1 в B1:', data.aud1);
+      }
       
-      // === 2. ЭКСПЕРТ ===
-      // Эксперт распределяется в строку 3 (B3, C3, D3, E3, F3, G3) для соответствующих аудиторий
+      if (data.aud2 && String(data.aud2).trim() !== '') {
+        sh.getRange('C1').setValue(data.aud2);
+        console.log('✓ Аудитория 2 в C1:', data.aud2);
+      }
+      
+      if (data.aud3 && String(data.aud3).trim() !== '') {
+        sh.getRange('D1').setValue(data.aud3);
+        console.log('✓ Аудитория 3 в D1:', data.aud3);
+      }
+      
+      // 2. ЭКСПЕРТЫ В СТРОКЕ 3
       const expert = data.expert || '';
-      console.log('Эксперт для распределения:', expert);
       
-      // Определяем для каких аудиторий нужно добавить эксперта
-      const expertColumns = [];
+      // Заполняем эксперта в строке 3 ТОЛЬКО для заполненных аудиторий
+      if (expert) {
+        if (data.aud1 && String(data.aud1).trim() !== '') {
+          sh.getRange('B3').setValue(expert);
+          console.log('✓ Эксперт для аудитории 1 в B3:', expert);
+        }
+        if (data.aud2 && String(data.aud2).trim() !== '') {
+          sh.getRange('C3').setValue(expert);
+          console.log('✓ Эксперт для аудитории 2 в C3:', expert);
+        }
+        if (data.aud3 && String(data.aud3).trim() !== '') {
+          sh.getRange('D3').setValue(expert);
+          console.log('✓ Эксперт для аудитории 3 в D3:', expert);
+        }
+      }
       
-      if (data.aud1 && data.aud1.toString().trim() !== '') expertColumns.push(2); // B3
-      if (data.aud2 && data.aud2.toString().trim() !== '') expertColumns.push(3); // C3
-      if (data.aud3 && data.aud3.toString().trim() !== '') expertColumns.push(4); // D3
-      if (data.aud4 && data.aud4.toString().trim() !== '') expertColumns.push(5); // E3
-      if (data.aud5 && data.aud5.toString().trim() !== '') expertColumns.push(6); // F3
-      if (data.aud6 && data.aud6.toString().trim() !== '') expertColumns.push(7); // G3
+      // 3. АУДИТОРИИ 4-6 В СТРОКЕ 2
+      if (data.aud4 && String(data.aud4).trim() !== '') {
+        sh.getRange('E2').setValue(data.aud4);
+        console.log('✓ Аудитория 4 в E2:', data.aud4);
+      }
       
-      console.log('Колонки для эксперта (строка 3):', expertColumns);
+      if (data.aud5 && String(data.aud5).trim() !== '') {
+        sh.getRange('F2').setValue(data.aud5);
+        console.log('✓ Аудитория 5 в F2:', data.aud5);
+      }
       
-      // Записываем эксперта в строку 3 для заполненных аудиторий
-      expertColumns.forEach(col => {
-        sh.getRange(3, col).setValue(expert);
-        console.log(`Записан эксперт в ячейку ${String.fromCharCode(64 + col)}3`);
-      });
+      if (data.aud6 && String(data.aud6).trim() !== '') {
+        sh.getRange('G2').setValue(data.aud6);
+        console.log('✓ Аудитория 6 в G2:', data.aud6);
+      }
       
-      // === 3. ПРОГРАММА ЭКСПЕРТА ===
-      if (data.expertProgram) {
-        console.log('Программа эксперта в B4:', data.expertProgram);
+      // 4. ЭКСПЕРТЫ ДЛЯ АУДИТОРИЙ 4-6 (тоже в строку 3)
+      if (expert) {
+        if (data.aud4 && String(data.aud4).trim() !== '') {
+          sh.getRange('E3').setValue(expert);
+          console.log('✓ Эксперт для аудитории 4 в E3:', expert);
+        }
+        if (data.aud5 && String(data.aud5).trim() !== '') {
+          sh.getRange('F3').setValue(expert);
+          console.log('✓ Эксперт для аудитории 5 в F3:', expert);
+        }
+        if (data.aud6 && String(data.aud6).trim() !== '') {
+          sh.getRange('G3').setValue(expert);
+          console.log('✓ Эксперт для аудитории 6 в G3:', expert);
+        }
+      }
+      
+      // 5. ПРОГРАММА ЭКСПЕРТА
+      if (data.expertProgram && String(data.expertProgram).trim() !== '') {
         sh.getRange('B4').setValue(data.expertProgram);
+        console.log('✓ Программа эксперта в B4:', data.expertProgram);
+      }
+      
+      // === ОЧИСТКА ФОРМУЛ ВНИЗ ПО СТОЛБЦАМ ===
+      const lastRow = sh.getLastRow();
+      
+      // Для каждой колонки проверяем, заполнена ли аудитория
+      // Если заполнена - очищаем формулы вниз по всему столбцу
+      
+      // Колонка B (аудитория 1)
+      if (data.aud1 && String(data.aud1).trim() !== '') {
+        clearFormulasInColumn_(sh, 'B', lastRow);
+      }
+      
+      // Колонка C (аудитория 2)
+      if (data.aud2 && String(data.aud2).trim() !== '') {
+        clearFormulasInColumn_(sh, 'C', lastRow);
+      }
+      
+      // Колонка D (аудитория 3)
+      if (data.aud3 && String(data.aud3).trim() !== '') {
+        clearFormulasInColumn_(sh, 'D', lastRow);
+      }
+      
+      // Колонка E (аудитория 4)
+      if (data.aud4 && String(data.aud4).trim() !== '') {
+        clearFormulasInColumn_(sh, 'E', lastRow);
+      }
+      
+      // Колонка F (аудитория 5)
+      if (data.aud5 && String(data.aud5).trim() !== '') {
+        clearFormulasInColumn_(sh, 'F', lastRow);
+      }
+      
+      // Колонка G (аудитория 6)
+      if (data.aud6 && String(data.aud6).trim() !== '') {
+        clearFormulasInColumn_(sh, 'G', lastRow);
       }
       
       // === ПРОВЕРКА РЕЗУЛЬТАТА ===
-      console.log('=== ФИНАЛЬНЫЙ РЕЗУЛЬТАТ В DEV ===');
-      console.log('СТРОКА 1 (Аудитории):');
+      console.log('=== ФИНАЛЬНЫЙ РЕЗУЛЬТАТ ===');
       console.log('B1:', sh.getRange('B1').getValue());
       console.log('C1:', sh.getRange('C1').getValue());
       console.log('D1:', sh.getRange('D1').getValue());
-      
-      console.log('СТРОКА 2 (Аудитории 4-6):');
       console.log('E2:', sh.getRange('E2').getValue());
       console.log('F2:', sh.getRange('F2').getValue());
       console.log('G2:', sh.getRange('G2').getValue());
-      
-      console.log('СТРОКА 3 (Эксперт):');
       console.log('B3:', sh.getRange('B3').getValue());
       console.log('C3:', sh.getRange('C3').getValue());
       console.log('D3:', sh.getRange('D3').getValue());
       console.log('E3:', sh.getRange('E3').getValue());
       console.log('F3:', sh.getRange('F3').getValue());
       console.log('G3:', sh.getRange('G3').getValue());
-      
-      console.log('СТРОКА 4 (Программа):');
       console.log('B4:', sh.getRange('B4').getValue());
       
     } catch(e) {
-      console.log('Ошибка при применении данных к листу:', e.message);
+      console.log('❌ Ошибка:', e.message);
       throw e;
     }
   });
+}
+
+// Новая функция для очистки формул вниз по столбцу
+function clearFormulasInColumn_(sheet, columnLetter, lastRow) {
+  if (lastRow <= 1) return; // Если только заголовки, нечего очищать
+  
+  // Начинаем с 4 строки (после программы эксперта) или с 5, если нужно пропустить первые строки
+  const startRow = 5; // Начинаем с 5 строки, чтобы не трогать заголовки и программу
+  if (startRow > lastRow) return;
+  
+  const range = sheet.getRange(`${columnLetter}${startRow}:${columnLetter}${lastRow}`);
+  const formulas = range.getFormulas();
+  
+  let clearedCount = 0;
+  for (let i = 0; i < formulas.length; i++) {
+    if (formulas[i][0] && formulas[i][0].startsWith('=')) {
+      // Очищаем только формулу, оставляя значения
+      const cell = sheet.getRange(startRow + i, columnToIndex_(columnLetter));
+      cell.clearContent(); // Очищает содержимое (формулу), но не форматирование
+      clearedCount++;
+    }
+  }
+  
+  console.log(`✓ Очищено ${clearedCount} формул в колонке ${columnLetter} (строки ${startRow}-${lastRow})`);
+}
+
+// Вспомогательная функция для преобразования буквы колонки в индекс
+function columnToIndex_(columnLetter) {
+  return columnLetter.charCodeAt(0) - 64; // A=1, B=2, C=3...
 }
 
 function clearAudienceColumnsIfMissing_(fileId, data) {
@@ -1431,12 +1521,21 @@ function clearAudienceColumnsIfMissing_(fileId, data) {
   const sheets = ss.getSheets();
   
   sheets.forEach(sh => {
-    // Очищаем только старые аудитории (1-3) если не заполнены
-    // Новые аудитории (4-6) не очищаем - они просто остаются пустыми если нет данных
-    if (!data.aud2) sh.getRange('C1').clearContent();
-    if (!data.aud3) sh.getRange('D1').clearContent();
+    const lastRow = sh.getLastRow();
     
-    console.log('Очистка выполнена для незаполненных аудиторий 1-3');
+    if (!data.aud2) {
+      sh.getRange('C1').clearContent(); 
+      sh.getRange('C3').clearContent(); 
+      clearFormulasInColumn_(sh, 'C', lastRow);
+    }
+    
+    if (!data.aud3) {
+      sh.getRange('D1').clearContent(); 
+      sh.getRange('D3').clearContent(); 
+      clearFormulasInColumn_(sh, 'D', lastRow);
+    }
+    
+    console.log('Очистка выполнена для незаполненных аудиторий 2-3');
   });
 }
 
