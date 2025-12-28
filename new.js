@@ -275,30 +275,24 @@ function f1() {
       return;
     }
 
-    // Получаем только EFG из STUDENT
     const studValues = shStud.getRange(1, 5, lastRow, 3).getValues(); 
     const studFormulas = shStud.getRange(1, 5, lastRow, 3).getFormulas(); 
     
-    //  Создаем массив для объединенного значения в E (затираем формулы)
     const devValuesE = studValues.map((row, rowIndex) => {
-      // Объединяем значения E+F+G в одну строку (без формул)
       const combinedValue = row
-        .map((value, colIndex) => studFormulas[rowIndex][colIndex] ? '' : value) // Заменяем формулы пустотами
-        .filter(val => val) // Убираем пустые значения
-        .join(' '); // Объединяем через пробел
+        .map((value, colIndex) => studFormulas[rowIndex][colIndex] ? '' : value) 
+        .filter(val => val) 
+        .join(' '); 
       
-      return [combinedValue]; // Возвращаем массив с одним элементом для столбца E
+      return [combinedValue]; 
     });
 
-    // Создаем массивы для затирания формул в E, F, G
-    const emptyValuesE = devValuesE; // E уже содержит значения без формул
-    const emptyValuesF = Array(lastRow).fill().map(() => ['']); // Пустые значения для F
-    const emptyValuesG = Array(lastRow).fill().map(() => ['']); // Пустые значения для G
+    const emptyValuesE = devValuesE; 
+    const emptyValuesF = Array(lastRow).fill().map(() => ['']); 
+    const emptyValuesG = Array(lastRow).fill().map(() => ['']); 
 
-    //  Записываем значения в E DEV (затираем формулы)
     shDev.getRange(1, 5, lastRow, 1).setValues(emptyValuesE);
     
-    //  Затираем формулы в столбцах F и G DEV пустыми значениями
     shDev.getRange(1, 6, lastRow, 1).setValues(emptyValuesF);
     shDev.getRange(1, 7, lastRow, 1).setValues(emptyValuesG);
 
@@ -316,12 +310,10 @@ function f5() {
   
   let errorCells = [];
   
-  // Проверяем каждую ячейку в диапазоне данных
   for (let row = 0; row < values.length; row++) {
     for (let col = 0; col < values[row].length; col++) {
       const value = values[row][col];
       
-      // Проверяем на ошибки Google Sheets
       if (value === '#ERROR!' || value === '#N/A' || value === '#VALUE!' || 
           value === '#REF!' || value === '#DIV/0!' || value === '#NUM!' || 
           value === '#NAME?' || value === '#NULL!') {
@@ -332,7 +324,6 @@ function f5() {
     }
   }
   
-  // Формируем сообщение для пользователя
   if (errorCells.length === 0) {
     SpreadsheetApp.getUi().alert('✅ Ошибок нет');
   } else {
@@ -350,7 +341,6 @@ function f2() {
     const shDev = ssDev.getActiveSheet();
     const sheetName = shDev.getName();
     
-    // Извлекаем ID из имени DEV файла
     const devFileName = ssDev.getName();
     const idMatch = devFileName.match(/DEV\s—\s(\d+)/);
     if (!idMatch) {
@@ -487,6 +477,7 @@ function menuDeliverToStudent_AutoContext() {
       const studFile = DriveApp.getFileById(currentFileId).makeCopy(`STUDENT — ${order}`, folder);
       studId = studFile.getId();
       
+      // Убираем формулы из STUDENT
       removeFormulasFromStudent_(studId);
       
       DriveApp.getFileById(studId).setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.EDIT);
@@ -740,6 +731,7 @@ function createDevOnly_AutoContext_(mode) {
     const devFile = DriveApp.getFileById(masterId).makeCopy(`DEV — ${order}`, folder);
     const devId = devFile.getId();
 
+    // Передаем все данные
     applyAudienceExpert_(devId, {
       aud1: aud1,
       expert1: expert1,
@@ -756,6 +748,7 @@ function createDevOnly_AutoContext_(mode) {
       expertProgram: expertProgram
     });
     
+    // Очищаем только старые незаполненные аудитории
     clearAudienceColumnsIfMissing_(devId, {
       aud2: aud2,
       expert2: expert2,
@@ -780,53 +773,44 @@ function createDevOnly_AutoContext_(mode) {
 function menuDeliverExpanded_Final() {
   try {
     const { devId, studentId } = resolveDevStudentByContext_();
-    
+
     const ssDev = SpreadsheetApp.openById(devId);
     const ssStud = SpreadsheetApp.openById(studentId);
     const shDev = ssDev.getActiveSheet();
     const sheetName = shDev.getName();
-    
-    const devFileName = ssDev.getName();
-    const idMatch = devFileName.match(/DEV\s—\s(\d+)/);
-    if (!idMatch) {
-      throw new Error('Не удалось извлечь ID из имени DEV файла. Формат: "DEV — 111"');
-    }
-    const devIdNumber = idMatch[1];
-    
+
+    // 1️⃣ DEV — аккуратно заменяем формулы ТОЛЬКО с валидным значением
     processFormulasInPlace_(shDev);
-    
-    const timestamp = new Date().getTime();
-    const tempSheetName = `temp_${timestamp}`;
-    
-    const tempSheet = shDev.copyTo(ssDev);
-    tempSheet.setName(tempSheetName);
-    
+
+    // 2️⃣ DEV → temp
+    const tempSheet = shDev.copyTo(ssDev).setName(`temp_${Date.now()}`);
+
     try {
+      // 3️⃣ temp — жёстко удаляем формулы + чистим ошибки
       removeFormulasKeepStyles_(tempSheet);
-      
-      const newSheetInStudent = tempSheet.copyTo(ssStud);
-      const tempSheetNameInStudent = `temp_student_${timestamp}`;
-      newSheetInStudent.setName(tempSheetNameInStudent);
-      
-      const oldSheet = ssStud.getSheetByName(sheetName);
-      if (oldSheet) {
-        ssStud.deleteSheet(oldSheet);
-      }
-      
-      newSheetInStudent.setName(sheetName);
-      
-      ssStud.setActiveSheet(newSheetInStudent);
-      
-      updateDatabaseWithDeliveryInfo_(devIdNumber);
-      
-      SpreadsheetApp.getUi().alert(`✅ STUDENT обновлен: вкладка "${sheetName}" заменена на версию без формул\n\nID ${devIdNumber} записан в базу`);
-      
+
+      // 4️⃣ STUDENT — copy → delete → rename
+      const newSheet = tempSheet.copyTo(ssStud);
+      newSheet.setName(`__new_${sheetName}`);
+
+      const old = ssStud.getSheetByName(sheetName);
+      if (old) ssStud.deleteSheet(old);
+
+      newSheet.setName(sheetName);
+      ssStud.setActiveSheet(newSheet);
+
+      SpreadsheetApp.getUi().alert(
+        '✅ STUDENT обновлён\n\n' +
+        '• DEV: формулы сохранены\n' +
+        '• STUDENT: без формул и ошибок'
+      );
+
     } finally {
       ssDev.deleteSheet(tempSheet);
     }
 
   } catch (e) {
-    SpreadsheetApp.getUi().alert('Ошибка при синхронизации DEV → STUDENT: ' + (e.message || e));
+    SpreadsheetApp.getUi().alert('Ошибка DEV → STUDENT: ' + (e.message || e));
   }
 }
 
@@ -840,15 +824,16 @@ function updateDatabaseWithDeliveryInfo_(devIdNumber) {
     
     const baseFile = files.next();
     const ssBase = SpreadsheetApp.openById(baseFile.getId());
-    const shBase = ssBase.getSheets()[0]; 
+    const shBase = ssBase.getSheets()[0]; // Берем первую вкладку
     
     const data = shBase.getDataRange().getValues();
     
+    // Ищем строку с совпадающим ID в столбце B (индекс 1)
     let targetRow = -1;
     for (let i = 0; i < data.length; i++) {
-      const rowId = String(data[i][1] || '').trim(); 
+      const rowId = String(data[i][1] || '').trim(); // Столбец B
       if (rowId === devIdNumber) {
-        targetRow = i + 1;
+        targetRow = i + 1; // +1 потому что индексы начинаются с 1 в Google Sheets
         break;
       }
     }
@@ -858,8 +843,9 @@ function updateDatabaseWithDeliveryInfo_(devIdNumber) {
       return;
     }
     
+    // Записываем в столбец F (индекс 5) сообщение
     const message = "написать Влад сделал";
-    shBase.getRange(targetRow, 6).setValue(message); 
+    shBase.getRange(targetRow, 6).setValue(message); // Столбец F
     
     console.log(`Записано в базу: строка ${targetRow}, столбец F - "${message}"`);
     
@@ -872,33 +858,37 @@ function updateDatabaseWithDeliveryInfo_(devIdNumber) {
 function processFormulasInPlace_(sheet) {
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
-  
   if (lastRow < 1 || lastCol < 1) return;
-  
+
   const range = sheet.getRange(1, 1, lastRow, lastCol);
   const formulas = range.getFormulas();
   const values = range.getValues();
-  
-  let hasChanges = false;
-  
+
+  let changed = false;
+
   for (let r = 0; r < lastRow; r++) {
     for (let c = 0; c < lastCol; c++) {
       const formula = formulas[r][c];
-      
-      if (formula && formula.startsWith('=')) {
-        const value = values[r][c];
-        
-        if (!isErrorValue_(value)) {
-          values[r][c] = value;
-          hasChanges = true;
-        }
+      if (!formula) continue;
+
+      const value = values[r][c];
+
+      if (value === '' || value === null) {
+        continue;
+      }
+
+      if (!isErrorValue_(value)) {
+        values[r][c] = value;
+        changed = true;
       }
     }
   }
-  if (hasChanges) {
+
+  if (changed) {
     range.setValues(values);
   }
 }
+
 
 function pasteSelectedValues_Bidirectional() {
   try {
@@ -935,16 +925,19 @@ function pasteSelectedValues_Bidirectional() {
       return;
     }
 
+    // Копируем в DEV (только ячейки без формул)
     let copiedCount = 0;
     
     for (const data of dataToCopy) {
       const targetRow = data.row;
       
       if (!isRowGrouped_(shDev, targetRow)) {
+        // Проверяем каждую ячейку на наличие формулы
         const rangeB = shDev.getRange(targetRow, COL_B);
         const rangeC = shDev.getRange(targetRow, COL_C);
         const rangeD = shDev.getRange(targetRow, COL_D);
         
+        // Копируем только если в ячейке нет формулы
         if (!hasFormula_(rangeB)) {
           rangeB.setValue(data.bValue);
           copiedCount++;
@@ -967,6 +960,7 @@ function pasteSelectedValues_Bidirectional() {
   }
 }
 
+// Проверяет, содержит ли ячейка формулу
 function hasFormula_(range) {
   try {
     const formula = range.getFormula();
@@ -976,7 +970,7 @@ function hasFormula_(range) {
   }
 }
 
-/***** ==============================================*****/
+/***** ======================= ПОМОЩНИКИ =======================*****/
 
 function resolveDevStudentByContext_() {
   const { sheet, row } = resolveRegistryRowContext_();
@@ -1010,7 +1004,7 @@ function resolveDevStudentByContext_() {
   };
 }
 
-/***** === ДЛЯ ПАРСИНГА СПИСКОВ ===*****/
+/***** === ФУНКЦИЯ ДЛЯ ПАРСИНГА СПИСКОВ ===*****/
 function parseNumberedListEnhanced_(text) {
   if (!text) return [];
   
@@ -1044,10 +1038,12 @@ function parseNumberedListEnhanced_(text) {
     } else if (matchNumber) {
       items.push(matchNumber[2].trim());
     } else if (hasMultipleLines) {
+      // Если есть несколько строк, но без нумерации - берем все
       items.push(trimmedLine);
     }
   }
 
+  // Если ничего не найдено, но есть текст - возвращаем как один элемент
   return items.length > 0 ? items : [cleanedText];
 }
 
@@ -1069,10 +1065,12 @@ function parseNumberedListSimple_(text) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
 
+    // Ищем нумерованные пункты
     const match = trimmedLine.match(/^\s*(\d{1,2})[\.\)]\s*(.+)$/);
     if (match) {
       items.push(match[2].trim());
     } else {
+      // Если не нашли нумерацию, но есть текст - добавляем как есть
       items.push(trimmedLine);
     }
   }
@@ -1092,14 +1090,17 @@ function collectSelectedRows_WithParsedLists_(shStud){
   const D = shStud.getRange(1, COL_D, last, 1).getDisplayValues().map(r=>String(r[0]||''));
 
   for (let r = 1; r <= last; r++){
+    // Пропускаем сгруппированные строки
     if (isRowGrouped_(shStud, r)) {
       continue;
     }
 
     const aClean = (A[r-1] || '').replace(/[\u200B\u200C\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ').trim();
 
+    // Обрабатываем ТОЛЬКО строки с ">"
     const hasSelectMarker = aClean.includes(MARK_SELECT);
     if (!hasSelectMarker) {
+      // Для строк без ">" - добавляем как есть (k=1)
       const meta = { 
         k: 1, 
         B: [B[r-1].trim()], 
@@ -1110,6 +1111,7 @@ function collectSelectedRows_WithParsedLists_(shStud){
       continue;
     }
 
+    // Для строк с ">" - разбираем списки
     const listB = parseNumberedList_(B[r-1]);
     const listC = parseNumberedList_(C[r-1]);
     const listD = parseNumberedList_(D[r-1]);
@@ -1142,12 +1144,14 @@ function pasteColsBCD_FromDevToStud_(devId, studId) {
 }
 
 function copyFormattingBetweenSheets_(sourceSheet, targetSheet, lastRow, lastCol) {
+  // Копируем форматирование строк
   for (let r = 1; r <= lastRow; r++) {
     const sourceRow = sourceSheet.getRange(r, 1, 1, lastCol);
     const targetRow = targetSheet.getRange(r, 1, 1, lastCol);
     sourceRow.copyTo(targetRow, {formatOnly: true});
   }
   
+  // Копируем форматирование столбцов
   for (let c = 1; c <= lastCol; c++) {
     const sourceCol = sourceSheet.getRange(1, c, lastRow, 1);
     const targetCol = targetSheet.getRange(1, c, lastRow, 1);
@@ -1156,23 +1160,38 @@ function copyFormattingBetweenSheets_(sourceSheet, targetSheet, lastRow, lastCol
 }
 
 function removeFormulasKeepStyles_(sheet) {
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-  
-  if (lastRow < 1 || lastCol < 1) return;
-  
-  const range = sheet.getRange(1, 1, lastRow, lastCol);
+  const range = sheet.getDataRange();
+  const values = range.getValues();
   const formulas = range.getFormulas();
-  
-  for (let r = 0; r < formulas.length; r++) {
-    for (let c = 0; c < formulas[r].length; c++) {
-      if (formulas[r][c] && formulas[r][c].startsWith('=')) {
-        const cell = sheet.getRange(r + 1, c + 1);
-        cell.clearContent(); 
+
+  let changed = false;
+
+  for (let r = 0; r < values.length; r++) {
+    for (let c = 0; c < values[0].length; c++) {
+      const v = values[r][c];
+
+      if (isErrorValue_(v)) {
+        values[r][c] = "";
+        changed = true;
+        continue;
+      }
+
+      if (typeof v === 'string' && v.startsWith('@@=')) {
+        values[r][c] = "";
+        changed = true;
+        continue;
+      }
+
+      if (formulas[r][c]) {
+        values[r][c] = v;
+        changed = true;
       }
     }
   }
+
+  range.setValues(values);
 }
+
 
 function isErrorValue_(value) {
   if (value === null || value === undefined) return false;
@@ -1202,30 +1221,36 @@ function removeFormulasFromSheet_(sheet) {
   const formulas = range.getFormulas();
   const values = range.getValues();
   
+  // Создаем массив значений без формул
   const valuesWithoutFormulas = values.map((row, rowIndex) => 
     row.map((value, colIndex) => {
       const formula = formulas[rowIndex][colIndex];
+      // Если есть формула - оставляем пустую строку, иначе оставляем значение
       return formula && formula.startsWith('=') ? '' : value;
     })
   );
   
+  // Записываем значения без формул
   range.setValues(valuesWithoutFormulas);
 }
 
 function copyBasicFormatting_(sourceSheet, targetSheet, lastRow, lastCol) {
   try {
+    // Копируем настройки строк (высоту)
     for (let r = 1; r <= lastRow; r++) {
       const sourceRow = sourceSheet.getRange(r, 1);
       const targetRow = targetSheet.getRange(r, 1);
       targetSheet.setRowHeight(r, sourceSheet.getRowHeight(r));
     }
     
+    // Копируем настройки столбцов (ширину)
     for (let c = 1; c <= lastCol; c++) {
       const sourceCol = sourceSheet.getRange(1, c);
       const targetCol = targetSheet.getRange(1, c);
       targetSheet.setColumnWidth(c, sourceSheet.getColumnWidth(c));
     }
     
+    // Копируем базовые стили ячеек
     const sourceStyles = sourceSheet.getRange(1, 1, lastRow, lastCol).getTextStyles();
     const targetRange = targetSheet.getRange(1, 1, lastRow, lastCol);
     targetRange.setTextStyles(sourceStyles);
@@ -1265,9 +1290,10 @@ function removeFormulasFromRange_(range) {
   for (let r = 0; r < numRows; r++) {
     for (let c = 0; c < numCols; c++) {
       const formula = formulas[r][c];
+      // Если есть формула - очищаем только содержимое
       if (formula && formula.startsWith('=')) {
         const cell = range.getCell(r + 1, c + 1);
-        cell.clearContent(); 
+        cell.clearContent(); // Очищает только содержимое, сохраняя стили
       }
     }
   }
@@ -1275,10 +1301,12 @@ function removeFormulasFromRange_(range) {
 
 function copyRowHeightsAndColumnWidths_(sourceSheet, targetSheet, lastRow, lastCol) {
   try {
+    // Копируем высоты строк
     for (let r = 1; r <= lastRow; r++) {
       targetSheet.setRowHeight(r, sourceSheet.getRowHeight(r));
     }
     
+    // Копируем ширины столбцов
     for (let c = 1; c <= lastCol; c++) {
       targetSheet.setColumnWidth(c, sourceSheet.getColumnWidth(c));
     }
@@ -1353,6 +1381,7 @@ function applyAudienceExpert_(fileId, data) {
         sh.getRange('B4').clearContent();
       }
       
+      // === ШАГ 2: ЗАПОЛНЯЕМ ДАННЫЕ ===
       if (data.aud1 && String(data.aud1).trim() !== '') {
         sh.getRange('B1').setValue(data.aud1);
         console.log('✓ Аудитория 1 в B1:', data.aud1);
@@ -1418,8 +1447,11 @@ function applyAudienceExpert_(fileId, data) {
         console.log('✓ Программа эксперта в B4:', data.expertProgram);
       }
       
+      // === ШАГ 3: ИНВЕРСНАЯ ЛОГИКА ЗАТИРАНИЯ ФОРМУЛ ===
+      // Начинаем с 5 строки (после заголовков и программы эксперта)
       const startRowForFormulas = 5;
       
+      // Проверяем каждую колонку
       const columns = [
         { letter: 'B', hasAudience: data.aud1 && String(data.aud1).trim() !== '' },
         { letter: 'C', hasAudience: data.aud2 && String(data.aud2).trim() !== '' },
@@ -1431,8 +1463,10 @@ function applyAudienceExpert_(fileId, data) {
       
       columns.forEach(col => {
         if (col.hasAudience) {
+          // Если аудитория ЗАПОЛНЕНА → формулы НЕ ЗАТИРАЕМ
           console.log(`✓ Колонка ${col.letter}: аудитория заполнена → формулы СОХРАНЯЕМ`);
         } else {
+          // Если аудитория НЕ ЗАПОЛНЕНА → формулы ЗАТИРАЕМ
           clearFormulasInColumnFromRow_(sh, col.letter, startRowForFormulas, lastRowToClear);
           console.log(`✓ Колонка ${col.letter}: аудитория не заполнена → формулы ЗАТИРАЕМ`);
         }
@@ -1487,6 +1521,7 @@ function isColumnEmpty_(sheet, columnLetter, startRow, endRow) {
   return true;
 }
 
+// Функция для гарантии, что колонка пустая (очищает любые значения/формулы)
 function ensureColumnIsEmpty_(sheet, columnLetter, lastRow) {
   const range = sheet.getRange(`${columnLetter}1:${columnLetter}${lastRow}`);
   const formulas = range.getFormulas();
@@ -1510,10 +1545,12 @@ function ensureColumnIsEmpty_(sheet, columnLetter, lastRow) {
   }
 }
 
+// Новая функция для очистки формул вниз по столбцу
 function clearFormulasInColumn_(sheet, columnLetter, lastRow) {
-  if (lastRow <= 1) return; 
+  if (lastRow <= 1) return; // Если только заголовки, нечего очищать
   
-  const startRow = 5; 
+  // Начинаем с 4 строки (после программы эксперта) или с 5, если нужно пропустить первые строки
+  const startRow = 5; // Начинаем с 5 строки, чтобы не трогать заголовки и программу
   if (startRow > lastRow) return;
   
   const range = sheet.getRange(`${columnLetter}${startRow}:${columnLetter}${lastRow}`);
@@ -1522,8 +1559,9 @@ function clearFormulasInColumn_(sheet, columnLetter, lastRow) {
   let clearedCount = 0;
   for (let i = 0; i < formulas.length; i++) {
     if (formulas[i][0] && formulas[i][0].startsWith('=')) {
+      // Очищаем только формулу, оставляя значения
       const cell = sheet.getRange(startRow + i, columnToIndex_(columnLetter));
-      cell.clearContent(); 
+      cell.clearContent(); // Очищает содержимое (формулу), но не форматирование
       clearedCount++;
     }
   }
@@ -1634,6 +1672,7 @@ function parseNumberedList_(text) {
     const line = lines[i].trim();
     if (!line) continue;
 
+    // Проверяем, начинается ли строка с нового нумерованного пункта
     const matchNumber = line.match(/^\s*(\d{1,2})[\.\)]\s*(.*)$/) || 
                        line.match(/^\s*(\d{1,2})\s+(.*)$/);
     
@@ -1641,37 +1680,45 @@ function parseNumberedList_(text) {
       const number = parseInt(matchNumber[1]);
       const content = matchNumber[2].trim();
       
+      // Если у нас уже есть собранный элемент, сохраняем его
       if (currentItem !== '') {
         items.push(currentItem.trim());
       }
       
+      // Начинаем новый элемент
       currentNumber = number;
       currentItem = content;
       
+      // Проверяем следующий элемент - если он тоже нумерованный, то это отдельный пункт
       if (i < lines.length - 1) {
         const nextLine = lines[i + 1].trim();
         const nextMatch = nextLine.match(/^\s*(\d{1,2})[\.\)]\s*/) || 
                          nextLine.match(/^\s*(\d{1,2})\s+/);
         
         if (nextMatch && parseInt(nextMatch[1]) === number + 1) {
+          // Следующий элемент имеет следующий номер - заканчиваем текущий
           items.push(currentItem.trim());
           currentItem = '';
           currentNumber = null;
         }
       }
     } else {
+      // Это продолжение текущего элемента
       if (currentItem !== '') {
         currentItem += '\n' + line;
       } else {
+        // Если нет текущего элемента, начинаем новый
         currentItem = line;
       }
     }
   }
   
+  // Добавляем последний элемент
   if (currentItem !== '') {
     items.push(currentItem.trim());
   }
 
+  // Если не нашли структурированных элементов, возвращаем весь текст как один элемент
   return items.length > 0 ? items : [cleanedText];
 }
 
