@@ -700,22 +700,22 @@ function createDevOnly_AutoContext_(mode) {
       throw new Error('Строка ' + row + ' не существует в таблице');
     }
     
-    const aud1 = sheet.getRange(row, 7).getValue() || '';  // G → B1
-    const expert1 = sheet.getRange(row, 8).getValue() || ''; // H → B2
-    const aud2 = sheet.getRange(row, 9).getValue() || '';  // I → C1
-    const expert2 = sheet.getRange(row, 10).getValue() || ''; // J → C2
-    const aud3 = sheet.getRange(row, 11).getValue() || ''; // K → D1
-    const expert3 = sheet.getRange(row, 12).getValue() || ''; // L → D2
-    
-    // Новые аудитории (4-6)
-    const aud4 = sheet.getRange(row, 13).getValue() || ''; // M → E2
-    const aud5 = sheet.getRange(row, 15).getValue() || ''; // O → F2
-    const aud6 = sheet.getRange(row, 17).getValue() || ''; // Q → G2
-    
-    // Эксперты для новых аудиторий
-    const expert4 = sheet.getRange(row, 14).getValue() || ''; // N → E3
-    const expert5 = sheet.getRange(row, 16).getValue() || ''; // P → F3
-    const expert6 = sheet.getRange(row, 18).getValue() || ''; // R → G3
+    const aud1 = sheet.getRange(row, 7).getValue() || '';
+    const expert1 = sheet.getRange(row, 8).getValue() || '';
+    const aud2 = sheet.getRange(row, 9).getValue() || '';
+    const expert2 = sheet.getRange(row, 10).getValue() || '';
+    const aud3 = sheet.getRange(row, 11).getValue() || '';
+    const expert3 = sheet.getRange(row, 12).getValue() || '';
+
+    const aud4 = sheet.getRange(row, 13).getValue() || '';
+    const aud5 = sheet.getRange(row, 15).getValue() || '';
+    const aud6 = sheet.getRange(row, 17).getValue() || '';
+
+    const expert4 = sheet.getRange(row, 14).getValue() || '';
+    const expert5 = sheet.getRange(row, 16).getValue() || '';
+    const expert6 = sheet.getRange(row, 18).getValue() || '';
+
+
     
     const expertProgram = sheet.getRange(row, COLS.expertProgram || 14).getValue() || ''; // N → B4
 
@@ -733,20 +733,16 @@ function createDevOnly_AutoContext_(mode) {
 
     // Передаем все данные
     applyAudienceExpert_(devId, {
-      aud1: aud1,
-      expert1: expert1,
-      aud2: aud2,
-      expert2: expert2,
-      aud3: aud3,
-      expert3: expert3,
-      aud4: aud4,
-      expert4: expert4,
-      aud5: aud5,
-      expert5: expert5,
-      aud6: aud6,
-      expert6: expert6,
-      expertProgram: expertProgram
+      aud1,      // MAIN G
+      expert1,   // MAIN H
+      aud2,      // MAIN I
+      expert2,   // MAIN J
+      aud3,      // MAIN K
+      expert3,   // MAIN L
+      aud4       // MAIN M
     });
+
+
     
     // Очищаем только старые незаполненные аудитории
     clearAudienceColumnsIfMissing_(devId, {
@@ -1221,36 +1217,30 @@ function removeFormulasFromSheet_(sheet) {
   const formulas = range.getFormulas();
   const values = range.getValues();
   
-  // Создаем массив значений без формул
   const valuesWithoutFormulas = values.map((row, rowIndex) => 
     row.map((value, colIndex) => {
       const formula = formulas[rowIndex][colIndex];
-      // Если есть формула - оставляем пустую строку, иначе оставляем значение
       return formula && formula.startsWith('=') ? '' : value;
     })
   );
   
-  // Записываем значения без формул
   range.setValues(valuesWithoutFormulas);
 }
 
 function copyBasicFormatting_(sourceSheet, targetSheet, lastRow, lastCol) {
   try {
-    // Копируем настройки строк (высоту)
     for (let r = 1; r <= lastRow; r++) {
       const sourceRow = sourceSheet.getRange(r, 1);
       const targetRow = targetSheet.getRange(r, 1);
       targetSheet.setRowHeight(r, sourceSheet.getRowHeight(r));
     }
     
-    // Копируем настройки столбцов (ширину)
     for (let c = 1; c <= lastCol; c++) {
       const sourceCol = sourceSheet.getRange(1, c);
       const targetCol = targetSheet.getRange(1, c);
       targetSheet.setColumnWidth(c, sourceSheet.getColumnWidth(c));
     }
     
-    // Копируем базовые стили ячеек
     const sourceStyles = sourceSheet.getRange(1, 1, lastRow, lastCol).getTextStyles();
     const targetRange = targetSheet.getRange(1, 1, lastRow, lastCol);
     targetRange.setTextStyles(sourceStyles);
@@ -1290,10 +1280,9 @@ function removeFormulasFromRange_(range) {
   for (let r = 0; r < numRows; r++) {
     for (let c = 0; c < numCols; c++) {
       const formula = formulas[r][c];
-      // Если есть формула - очищаем только содержимое
       if (formula && formula.startsWith('=')) {
         const cell = range.getCell(r + 1, c + 1);
-        cell.clearContent(); // Очищает только содержимое, сохраняя стили
+        cell.clearContent(); 
       }
     }
   }
@@ -1301,12 +1290,10 @@ function removeFormulasFromRange_(range) {
 
 function copyRowHeightsAndColumnWidths_(sourceSheet, targetSheet, lastRow, lastCol) {
   try {
-    // Копируем высоты строк
     for (let r = 1; r <= lastRow; r++) {
       targetSheet.setRowHeight(r, sourceSheet.getRowHeight(r));
     }
     
-    // Копируем ширины столбцов
     for (let c = 1; c <= lastCol; c++) {
       targetSheet.setColumnWidth(c, sourceSheet.getColumnWidth(c));
     }
@@ -1342,144 +1329,46 @@ function ensureRowsAndCols_(sh, minRow, minCol){
   if (maxC < minCol) sh.insertColumnsAfter(maxC, minCol - maxC);
 }
 
-function applyAudienceExpert_(fileId, data) {
-  const ss = SpreadsheetApp.openById(fileId);
-  const sheets = ss.getSheets();
-  
-  sheets.forEach(sh => {
-    try { 
-      console.log('Применяем данные из MAIN (инверсная логика):', data);
-      
-      const lastRow = sh.getLastRow();
-      const lastRowToClear = Math.max(lastRow || 1, 100);
-      
-      if (data.aud1 || data.expert1) {
-        sh.getRange('B1').clearContent();
-        sh.getRange('B2').clearContent();
-      }
-      if (data.aud2 || data.expert2) {
-        sh.getRange('C1').clearContent();
-        sh.getRange('C2').clearContent();
-      }
-      if (data.aud3 || data.expert3) {
-        sh.getRange('D1').clearContent();
-        sh.getRange('D2').clearContent();
-      }
-      if (data.aud4 || data.expert4) {
-        sh.getRange('E2').clearContent();
-        sh.getRange('E3').clearContent();
-      }
-      if (data.aud5 || data.expert5) {
-        sh.getRange('F2').clearContent();
-        sh.getRange('F3').clearContent();
-      }
-      if (data.aud6 || data.expert6) {
-        sh.getRange('G2').clearContent();
-        sh.getRange('G3').clearContent();
-      }
-      if (data.expertProgram) {
-        sh.getRange('B4').clearContent();
-      }
-      
-      // === ШАГ 2: ЗАПОЛНЯЕМ ДАННЫЕ ===
-      if (data.aud1 && String(data.aud1).trim() !== '') {
-        sh.getRange('B1').setValue(data.aud1);
-        console.log('✓ Аудитория 1 в B1:', data.aud1);
-      }
-      
-      if (data.expert1 && String(data.expert1).trim() !== '') {
-        sh.getRange('B2').setValue(data.expert1);
-        console.log('✓ Эксперт 1 в B2:', data.expert1);
-      }
-      
-      if (data.aud2 && String(data.aud2).trim() !== '') {
-        sh.getRange('C1').setValue(data.aud2);
-        console.log('✓ Аудитория 2 в C1:', data.aud2);
-      }
-      
-      if (data.expert2 && String(data.expert2).trim() !== '') {
-        sh.getRange('C2').setValue(data.expert2);
-        console.log('✓ Эксперт 2 в C2:', data.expert2);
-      }
-      
-      if (data.aud3 && String(data.aud3).trim() !== '') {
-        sh.getRange('D1').setValue(data.aud3);
-        console.log('✓ Аудитория 3 в D1:', data.aud3);
-      }
-      
-      if (data.expert3 && String(data.expert3).trim() !== '') {
-        sh.getRange('D2').setValue(data.expert3);
-        console.log('✓ Эксперт 3 в D2:', data.expert3);
-      }
-      
-      if (data.aud4 && String(data.aud4).trim() !== '') {
-        sh.getRange('E2').setValue(data.aud4);
-        console.log('✓ Аудитория 4 в E2:', data.aud4);
-      }
-      
-      if (data.expert4 && String(data.expert4).trim() !== '') {
-        sh.getRange('E3').setValue(data.expert4);
-        console.log('✓ Эксперт для аудитории 4 в E3:', data.expert4);
-      }
-      
-      if (data.aud5 && String(data.aud5).trim() !== '') {
-        sh.getRange('F2').setValue(data.aud5);
-        console.log('✓ Аудитория 5 в F2:', data.aud5);
-      }
-      
-      if (data.expert5 && String(data.expert5).trim() !== '') {
-        sh.getRange('F3').setValue(data.expert5);
-        console.log('✓ Эксперт для аудитории 5 в F3:', data.expert5);
-      }
-      
-      if (data.aud6 && String(data.aud6).trim() !== '') {
-        sh.getRange('G2').setValue(data.aud6);
-        console.log('✓ Аудитория 6 в G2:', data.aud6);
-      }
-      
-      if (data.expert6 && String(data.expert6).trim() !== '') {
-        sh.getRange('G3').setValue(data.expert6);
-        console.log('✓ Эксперт для аудитории 6 в G3:', data.expert6);
-      }
-      
-      if (data.expertProgram && String(data.expertProgram).trim() !== '') {
-        sh.getRange('B4').setValue(data.expertProgram);
-        console.log('✓ Программа эксперта в B4:', data.expertProgram);
-      }
-      
-      // === ШАГ 3: ИНВЕРСНАЯ ЛОГИКА ЗАТИРАНИЯ ФОРМУЛ ===
-      // Начинаем с 5 строки (после заголовков и программы эксперта)
-      const startRowForFormulas = 5;
-      
-      // Проверяем каждую колонку
-      const columns = [
-        { letter: 'B', hasAudience: data.aud1 && String(data.aud1).trim() !== '' },
-        { letter: 'C', hasAudience: data.aud2 && String(data.aud2).trim() !== '' },
-        { letter: 'D', hasAudience: data.aud3 && String(data.aud3).trim() !== '' },
-        { letter: 'E', hasAudience: data.aud4 && String(data.aud4).trim() !== '' },
-        { letter: 'F', hasAudience: data.aud5 && String(data.aud5).trim() !== '' },
-        { letter: 'G', hasAudience: data.aud6 && String(data.aud6).trim() !== '' }
-      ];
-      
-      columns.forEach(col => {
-        if (col.hasAudience) {
-          // Если аудитория ЗАПОЛНЕНА → формулы НЕ ЗАТИРАЕМ
-          console.log(`✓ Колонка ${col.letter}: аудитория заполнена → формулы СОХРАНЯЕМ`);
-        } else {
-          // Если аудитория НЕ ЗАПОЛНЕНА → формулы ЗАТИРАЕМ
-          clearFormulasInColumnFromRow_(sh, col.letter, startRowForFormulas, lastRowToClear);
-          console.log(`✓ Колонка ${col.letter}: аудитория не заполнена → формулы ЗАТИРАЕМ`);
-        }
-      });
-      
-      console.log('=== ИНВЕРСНАЯ ЛОГИКА ВЫПОЛНЕНА ===');
-      
-    } catch(e) {
-      console.log('❌ Ошибка:', e.message);
-      throw e;
-    }
-  });
+function applyAudienceExpert_(devId, data) {
+  const ss = SpreadsheetApp.openById(devId);
+  const sh = ss.getSheets()[0];
+  const lastRow = sh.getLastRow();
+
+  if (data.aud1) {
+    sh.getRange('B2').setValue(data.aud1);
+    sh.getRange('D2').setValue(data.aud1);
+    sh.getRange('G2').setValue(data.aud1);
+  }
+
+  if (data.expert1) {
+    sh.getRange('B1').setValue(data.expert1);
+  }
+
+  applyOrClear_(sh, data.aud2, 'C1', 3, lastRow);
+
+  applyOrClear_(sh, data.expert2, 'D1', 4, lastRow);
+
+  if (data.aud3) {
+    sh.getRange('E2').setValue(data.aud3);
+  }
+
+  if (data.expert3) {
+    sh.getRange('F2').setValue(data.expert3);
+  }
+
+  if (data.aud4) {
+    sh.getRange('G2').setValue(data.aud4);
+  }
 }
+
+function applyOrClear_(sheet, value, cell, col, lastRow) {
+  if (value) {
+    sheet.getRange(cell).setValue(value);
+  } else if (lastRow > 0) {
+    sheet.getRange(1, col, lastRow).clearContent();
+  }
+}
+
 
 function clearFormulasInColumnFromRow_(sheet, columnLetter, startRow, endRow) {
   if (startRow > endRow) return;
